@@ -2,11 +2,11 @@
 
 ## Goals
 ### Decode
-1. [ ] Parse header/footer.
-2. [ ] DEFLATE
-  - [ ] Read block header.
-  - [ ] Process block type 0.
-  - [ ] Process block type 1.
+- [ ] Parse header/footer.
+- [ ] DEFLATE
+  1. [ ] Read block header.
+  2. [ ] Process block type 0.
+  3. [ ] Process block type 1.
       1. [ ] Generate fixed prefix codes.
       2. [ ] Bytes to bitstream.
       3. [ ] Bitstream to symbols.
@@ -16,4 +16,4 @@
       2. [ ] Bytes to bitstream.
       3. [ ] Bitstream to symbols.
       4. [ ] LZSS
-3. [ ] Output.
+- [ ] Output.
