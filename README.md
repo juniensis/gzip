@@ -184,7 +184,7 @@ would look like:
 
 You might notice that 1101 equals 13, not 11, and this is because of rule #1.
 
-# 2.1 Rule #1
+### 2.1 Rule #1
 A devious yet consistent little scheme exists within both GZIP and DEFLATE: No matter what, any numerical
 value is pushed into the bitstream least significant bit to most significant bit. This does not apply to
 arbitrary bit sequences such as prefix codes or symbols, but does apply to values such as ISIZE, the CRC-32 
