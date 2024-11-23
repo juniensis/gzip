@@ -2,21 +2,21 @@
 
 ## Goals
 ### Decode
-1. [x] Parse header.
-2. [ ] DEFLATE
-  1. [x] Read block header.
-  2. [x] Process block type 0.
-  3. [ ] Process block type 1.
-      1. [ ] Generate fixed prefix codes.
-      2. [ ] Bytes to bitstream.
-      3. [ ] Bitstream to symbols.
-      4. [ ] LZSS
-  4. [ ] Process block type 2.
-      1. [ ] Generate dynamic prefix codes.
-      2. [ ] Bytes to bitstream.
-      3. [ ] Bitstream to symbols.
-      4. [ ] LZSS
-3. [ ] Output.
+- [x] Parse header.
+- [ ] DEFLATE
+    - [x] Read block header.
+    - [x] Process block type 0.
+    - [ ] Process block type 1.
+        - [ ] Generate fixed prefix codes.
+        - [ ] Bytes to bitstream.
+        - [ ] Bitstream to symbols.
+        - [ ] LZSS
+    - [ ] Process block type 2.
+        - [ ] Generate dynamic prefix codes.
+        - [ ] Bytes to bitstream.
+        - [ ] Bitstream to symbols.
+        - [ ] LZSS
+- [ ] Output.
 
 ## 1. The GZIP Format
 
