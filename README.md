@@ -11,7 +11,7 @@
       2. [ ] Bytes to bitstream.
       3. [ ] Bitstream to symbols.
       4. [ ] LZSS
-  - [ ] Process block type 2.
+  4. [ ] Process block type 2.
       1. [ ] Generate dynamic prefix codes.
       2. [ ] Bytes to bitstream.
       3. [ ] Bitstream to symbols.
@@ -393,6 +393,7 @@ TODO
 
 ### Extra
 Fig 1. Unabridged fixed prefix code table.
+
     | Binary      | Decimal | Binary      | Decimal | Binary      | Decimal | Binary      | Decimal |
     |-------------|---------|-------------|---------|-------------|---------|-------------|---------|
     | 0000000     | 256     | 0000001     | 257     | 0000010     | 258     | 0000011     | 259     |
