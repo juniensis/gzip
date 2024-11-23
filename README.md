@@ -2,9 +2,9 @@
 
 ## Goals
 ### Decode
--[x] Parse header.
+- [x] Parse header.
 
--[ ] DEFLATE
+- [ ] DEFLATE
     - [x] Read block header.
     - [x] Process block type 0.
     - [ ] Process block type 1.
@@ -17,7 +17,7 @@
         - [ ] Bytes to bitstream.
         - [ ] Bitstream to symbols.
         - [ ] LZSS
-[ ] Output.
+- [ ] Output.
 
 ## 1. The GZIP Format
 
