@@ -1,11 +1,5 @@
 //! Gzip encoding and decoding.
-use std::{
-    error::Error,
-    fmt::Display,
-    fs, io,
-    path::Path,
-    str::{from_utf8, from_utf8_unchecked},
-};
+use std::{error::Error, fmt::Display};
 
 /// A struct containing the individual parts of a GZIP header.
 ///
@@ -38,13 +32,14 @@ pub struct GzipHeader {
     pub fextra: Option<Vec<u8>>,
     pub fname: Option<String>,
     pub fcomment: Option<String>,
+    pub end_idx: usize,
 }
 
 impl GzipHeader {
     pub fn build(bytes: &[u8]) -> Result<Self, GzipError> {
         // Initally define header as the first 10 bytes, then later append any
         // optional header elements.
-        let mut header = bytes[0..10].to_vec();
+        let header = bytes[0..10].to_vec();
 
         // Split the header into each part.
         let id = [header[0], header[1]];
@@ -94,12 +89,14 @@ impl GzipHeader {
                     .take_while(|byte| byte != &0u8)
                     .collect::<Vec<_>>();
 
-                _fname = match String::from_utf8(after_header) {
+                _fname = match String::from_utf8(after_header.clone()) {
                     Ok(str) => Some(str),
                     Err(_) => {
                         return Err(GzipError::InvalidHeader(header));
                     }
                 };
+
+                idx += after_header.len();
                 flags[3] = true;
             }
             fcomment if fcomment & 0b0001_0000 == 0b0001_0000 => {
@@ -114,13 +111,14 @@ impl GzipHeader {
                     .take_while(|byte| byte != &0u8)
                     .collect::<Vec<_>>();
 
-                _fcomment = match String::from_utf8(after_header) {
+                _fcomment = match String::from_utf8(after_header.clone()) {
                     Ok(str) => Some(str),
                     Err(_) => {
                         return Err(GzipError::InvalidHeader(header));
                     }
                 };
 
+                idx += after_header.len();
                 flags[4] = true;
             }
             fhcrc if fhcrc & 0b0000_0010 == 0b0000_0010 => {
@@ -131,10 +129,12 @@ impl GzipHeader {
 
                 _crc = Some(((bytes[idx] as u16) << 8) | bytes[idx + 1] as u16);
 
+                idx += 2;
                 flags[1] = true;
             }
             _ => {}
         };
+
         Ok(Self {
             cm,
             flg: flags,
@@ -145,6 +145,7 @@ impl GzipHeader {
             fextra: _fextra,
             fname: _fname,
             fcomment: _fcomment,
+            end_idx: idx + 1,
         })
     }
 }
@@ -162,12 +163,12 @@ pub struct GzipFile {
 }
 
 impl GzipFile {
-    pub fn new(bytes: &[u8]) -> Result<Self, GzipError> {
+    pub fn build(bytes: &[u8]) -> Result<Self, GzipError> {
         let header = GzipHeader::build(bytes)?;
-        Ok(Self {
-            header,
-            deflate: vec![0],
-        })
+
+        let deflate = bytes[header.end_idx..].to_vec();
+
+        Ok(Self { header, deflate })
     }
 }
 
