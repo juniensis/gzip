@@ -4,19 +4,19 @@
 ### Decode
 - [x] Parse header.
 - [ ] DEFLATE
-    - [x] Read block header.
-    - [x] Process block type 0.
-    - [ ] Process block type 1.
-        - [ ] Generate fixed prefix codes.
-        - [ ] Bytes to bitstream.
-        - [ ] Bitstream to symbols.
-        - [ ] LZSS
-    - [ ] Process block type 2.
-        - [ ] Generate dynamic prefix codes.
-        - [ ] Bytes to bitstream.
-        - [ ] Bitstream to symbols.
-        - [ ] LZSS
-- [ ] Output.
+      - [x] Read block header.
+      - [x] Process block type 0.
+      - [ ] Process block type 1.
+          - [ ] Generate fixed prefix codes.
+          - [ ] Bytes to bitstream.
+          - [ ] Bitstream to symbols.
+          - [ ] LZSS
+      - [ ] Process block type 2.
+          - [ ] Generate dynamic prefix codes.
+          - [ ] Bytes to bitstream.
+          - [ ] Bitstream to symbols.
+          - [ ] LZSS
+[ ] Output.
 
 ## 1. The GZIP Format
 
