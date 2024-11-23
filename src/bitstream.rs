@@ -243,3 +243,13 @@ pub fn reverse_byte(byte: u8) -> u8 {
     ];
     LOOKUP[byte as usize]
 }
+
+pub trait BitIndex {
+    fn bit_index(&self, index: u8) -> u8;
+}
+
+impl BitIndex for u32 {
+    fn bit_index(&self, index: u8) -> u8 {
+        ((self >> (index - 1)) & 1) as u8
+    }
+}

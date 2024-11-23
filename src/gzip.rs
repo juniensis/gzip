@@ -160,15 +160,26 @@ impl GzipHeader {
 pub struct GzipFile {
     pub header: GzipHeader,
     pub deflate: Vec<u8>,
+    pub crc32: u32,
+    pub isize: u32,
 }
 
 impl GzipFile {
     pub fn build(bytes: &[u8]) -> Result<Self, GzipError> {
         let header = GzipHeader::build(bytes)?;
+        let footer = bytes[bytes.len() - 8..bytes.len()].to_vec();
 
-        let deflate = bytes[header.end_idx..].to_vec();
+        let crc32 = u32::from_le_bytes([footer[0], footer[1], footer[2], footer[3]]);
+        let isize = u32::from_le_bytes([footer[4], footer[5], footer[6], footer[7]]);
 
-        Ok(Self { header, deflate })
+        let deflate = bytes[header.end_idx..bytes.len() - 8].to_vec();
+
+        Ok(Self {
+            header,
+            deflate,
+            crc32,
+            isize,
+        })
     }
 }
 

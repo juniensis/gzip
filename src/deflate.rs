@@ -1,4 +1,7 @@
-use crate::bitstream;
+use crate::{
+    bitstream::{self, BitStream},
+    prefix,
+};
 use std::{error::Error, fmt::Display};
 
 #[derive(Debug)]
@@ -59,21 +62,16 @@ impl DeflateBlock {
     }
     fn uncompressed(&self) -> Vec<u8> {
         let len = u16::from_le_bytes([self.raw[1], self.raw[2]]);
-        let nlen = u16::from_le_bytes([self.raw[3], self.raw[4]]);
 
-        let bitstream = self
+        let output = self
             .raw
             .iter()
-            .map(|x| bitstream::reverse_byte(x.to_owned()))
+            .skip(5)
+            .map(|x| x.to_owned())
+            .take(len as usize)
             .collect::<Vec<_>>();
 
-        println!("len: {:016b}", len);
-        println!("nlen: {:016b}", nlen);
-        for (i, byte) in bitstream.iter().enumerate() {
-            println!("byte {}: {:08b}", i, byte);
-        }
-
-        vec![0]
+        output
     }
 
     fn fixed_codes(&self) -> Vec<u8> {
