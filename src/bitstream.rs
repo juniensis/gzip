@@ -169,6 +169,25 @@ impl BitStream {
 
         Ok(())
     }
+    /// Takes in a u32 as a bit buffer and pushes the length least significant
+    /// bits to the bitstream. Currently, it loops and pushes the singular
+    /// which is likely a good bit slower than doing it in one operation, and
+    /// concatenating the most recent n % (length * 2) bytes and bit-shifting
+    /// them over by length and ORing with buffer, however, I don't feel like
+    /// implementing that right now.
+    ///
+    /// TODO: Remove loop.
+    ///
+    /// # Arguments
+    ///
+    /// * 'buffer' - A u32 little-endian bit buffer storing the bits to push.
+    /// * 'length' - The quantity of bits to push to the bitstream.
+    ///
+    pub fn push(&mut self, buffer: u32, length: u8) {
+        for i in (0..length).rev() {
+            self.push_bit(buffer.bit_index(i));
+        }
+    }
     /// RFC 1951 Section 3.1.1 describes the process of packing
     /// the bits into bytes as follows:
     ///     1. Data elements are packed into bytes in order of
@@ -250,6 +269,41 @@ pub trait BitIndex {
 
 impl BitIndex for u32 {
     fn bit_index(&self, index: u8) -> u8 {
-        ((self >> (index - 1)) & 1) as u8
+        ((self >> (index)) & 1) as u8
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::bitstream::{BitIndex, BitStream};
+
+    #[test]
+    fn test_bitstream() {
+        let mut stream = BitStream::new();
+
+        let bits: [u8; 8] = [1, 0, 1, 0, 1, 0, 1, 0];
+
+        for bit in bits {
+            stream.push_bit(bit);
+        }
+
+        let partial_byte: u8 = 0b0000_1111;
+        stream.push_partial(partial_byte, 4, 7).unwrap();
+        stream.push_partial(partial_byte, 1, 4).unwrap();
+
+        let concatenated: u16 = ((stream.bytes[0] as u16) << 8) | stream.bytes[1] as u16;
+        let concatenated_u32 = concatenated as u32;
+
+        let to_push: u16 = 0b11_0011_0011;
+        stream.push(to_push as u32, 10);
+
+        let last_ten = ((stream.bytes[stream.bytes.len() - 2] as u16) << 8)
+            | stream.bytes[stream.bytes.len() - 1] as u16;
+
+        let bit_idx = stream.len % 8;
+
+        assert_eq!(concatenated_u32.bit_index(9), 1);
+        assert_eq!(concatenated, 0b10101010_11110001);
+        assert_eq!(last_ten, to_push << (8 - bit_idx))
     }
 }
