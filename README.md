@@ -7,11 +7,11 @@
 - [ ] DEFLATE
     - [x] Read block header.
     - [x] Process block type 0.
-    - [ ] Process block type 1.
-        - [ ] Generate fixed prefix codes.
-        - [ ] Bytes to bitstream.
-        - [ ] Bitstream to symbols.
-        - [ ] LZSS
+    - [x] Process block type 1.
+        - [x] Generate fixed prefix codes.
+        - [x] Bytes to bitstream.
+        - [x] Bitstream to symbols.
+        - [x] LZSS
     - [ ] Process block type 2.
         - [ ] Generate dynamic prefix codes.
         - [ ] Bytes to bitstream.
