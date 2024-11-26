@@ -75,13 +75,44 @@ impl BitStream {
     ///
     /// '''
     /// let stream = BitStream::new();
-    /// stream.push(0);
+    /// stream.push_bit(1);
+    ///
+    /// assert_eq!(stream.bytes[0], 0b1000_0000);
     /// '''
     pub fn new() -> Self {
         Self {
             len: 0,
             idx: 0,
             bytes: Vec::new(),
+        }
+    }
+    /// Builds a bitstream from a byte-aligned big-endian byte array.
+    ///
+    /// # Arguments
+    ///
+    /// * 'raw' - The byte array to build the bitstream from.
+    ///
+    /// # Examples
+    ///
+    /// '''
+    /// let bytes = vec![0b1100_1100, 0b1111_0000];
+    ///
+    /// let stream = BitStream::from(bytes);
+    ///
+    /// let mut buffer: u16 = 0;
+    ///
+    /// for bit in stream {
+    ///     buffer = (buffer << 1) | bit;
+    /// }
+    ///
+    /// assert_eq!(buffer, 0b0011_0011_0000_1111);
+    ///
+    /// '''
+    pub fn from_be(raw: &[u8]) -> Self {
+        Self {
+            len: raw.len() * 8,
+            idx: 0,
+            bytes: raw.iter().map(|x| x.reverse_bits()).collect::<Vec<_>>(),
         }
     }
     /// Takes in a 0 or 1 and pushes it to the least significant
@@ -113,10 +144,10 @@ impl BitStream {
         if bit_index != 0 {
             // Take the last byte and shift out the unfilled bits
             // if bit_index = 3 and byte = 0xE0
-            // 0b1110_0000 << 8 - bit_index (5)
+            // 0b1110_0000 >> 8 - bit_index (5)
             // 0b0000_0111 >>= 1;
             // bit-index += 1;
-            // 0b0000_1111 >> 8 - bit_index (4)
+            // 0b0000_1111 << 8 - bit_index (4)
             // final = 0b1111_0000
             let shift: u8 = 8 - bit_index - 1;
             let len = self.bytes.len() - 1;

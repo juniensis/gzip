@@ -1,6 +1,4 @@
-use std::{cmp::Ordering, collections::BinaryHeap, fmt::Display};
-
-use crate::bitstream::BitIndex;
+use std::{cmp::Ordering, fmt, fmt::Display};
 
 pub const FIXED_CODE_LENGTHS: [u8; 288] = [
     8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
@@ -14,6 +12,34 @@ pub const FIXED_CODE_LENGTHS: [u8; 288] = [
     7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8,
 ];
 
+pub const LENGTH_CODES: [usize; 29] = [
+    257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 268, 269, 270, 271, 272, 273, 274, 275,
+    276, 277, 278, 279, 280, 281, 282, 283, 284, 285,
+];
+
+pub const LENGTH_EXTRA_BITS: [u8; 29] = [
+    0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0,
+];
+
+pub const LENGTH_BASE: [u16; 29] = [
+    3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131,
+    163, 195, 227, 258,
+];
+
+pub const DISTANCE_CODES: [usize; 30] = [
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+    26, 27, 28, 29,
+];
+
+pub const DISTANCE_EXTRA_BITS: [u8; 30] = [
+    0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13,
+    13,
+];
+
+pub const DISTANCE_BASE: [u16; 30] = [
+    1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537,
+    2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577,
+];
 /// A struct for representing codes of differing bit lengths, codes are stored
 /// little endian, meant to be read from most significant bit to least
 /// significant bit.
@@ -52,6 +78,7 @@ pub const FIXED_CODE_LENGTHS: [u8; 288] = [
 pub struct Code {
     pub buffer: u32,
     pub length: u8,
+    index: u8,
 }
 
 impl Code {
@@ -59,11 +86,12 @@ impl Code {
     ///
     /// # Returns
     ///
-    /// A Code struct with zeroes for both fields.
+    /// A Code struct with zeroes for all fields.
     pub fn new() -> Self {
         Self {
             buffer: 0,
             length: 0,
+            index: 0,
         }
     }
     /// Constructs an instance of Code with a given code and length.
@@ -78,7 +106,11 @@ impl Code {
     ///
     /// A Code struct with the given values.
     pub fn from(buffer: u32, length: u8) -> Self {
-        Self { buffer, length }
+        Self {
+            buffer,
+            length,
+            index: 0,
+        }
     }
     /// Accepts a length and a u32 as a buffer, and pushes length bits of that
     /// buffer into self.code and increments self.length by the appropriate
@@ -116,6 +148,18 @@ impl Code {
 impl Default for Code {
     fn default() -> Self {
         Code::new()
+    }
+}
+
+impl Iterator for Code {
+    type Item = u8;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index < self.length {
+            self.index += 1;
+            Some((self.buffer >> (self.length - self.index) & 1) as u8)
+        } else {
+            None
+        }
     }
 }
 
@@ -190,7 +234,9 @@ impl Eq for Node {}
 
 impl Ord for Node {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.significance.cmp(&other.significance)
+        self.significance
+            .cmp(&other.significance)
+            .then_with(|| self.code.length.cmp(&other.code.length))
     }
 }
 
@@ -216,11 +262,44 @@ impl Default for Node {
 #[derive(Debug)]
 pub struct PrefixTree {
     pub root: Node,
-    pub leaves: Vec<Node>,
     pub current: Box<Node>,
 }
 
 impl PrefixTree {
+    pub fn new() -> Self {
+        Self {
+            root: Node::new(),
+            current: Box::new(Node::new()),
+        }
+    }
+    pub fn insert_code(&mut self, code: Code, value: usize) {
+        let mut current = &mut self.root;
+        let mut current_code = Code::new();
+        for bit in code.clone() {
+            match bit {
+                0 => {
+                    if current.left.is_none() {
+                        current.left = Some(Box::new(Node::new()));
+                    }
+                    current = current.left.as_mut().unwrap();
+                    current_code.push_bit(bit);
+                    current.code = current_code.clone();
+                }
+                1 => {
+                    if current.right.is_none() {
+                        current.right = Some(Box::new(Node::new()));
+                    }
+                    current = current.right.as_mut().unwrap();
+                    current_code.push_bit(bit);
+                    current.code = current_code.clone();
+                }
+                _ => {}
+            }
+        }
+        current.value = Some(value);
+        current.code = code;
+        self.current = Box::new(self.root.clone());
+    }
     /// Generates a prefix code tree from the given bit lengths.
     ///
     /// # Arguments
@@ -273,43 +352,15 @@ impl PrefixTree {
             }
         }
 
-        let mut leaves = Vec::with_capacity(code_lengths.len());
+        let mut tree = PrefixTree::new();
 
-        let mut nodes_left = BinaryHeap::new();
-        let mut nodes_right = BinaryHeap::new();
-
-        for (symbol, code) in codes.iter().enumerate() {
-            if let Some(code) = code {
-                let node = Node {
-                    value: Some(symbol),
-                    significance: *code as u64,
-                    code: Code::from(*code, code_lengths[symbol]),
-                    left: None,
-                    right: None,
-                };
-
-                leaves.push(node.clone());
-                match code.bit_index(code_lengths[symbol] - 1) {
-                    0 => nodes_left.push(Box::new(node.clone())),
-                    1 => nodes_right.push(Box::new(node.clone())),
-                    _ => {}
-                }
+        for (index, code) in codes.iter().enumerate() {
+            if let Some(c) = code {
+                let code_struct = Code::from(c.to_owned(), code_lengths[index]);
+                tree.insert_code(code_struct, index);
             }
         }
-
-        let root = Node {
-            value: None,
-            significance: 0,
-            code: Code::new(),
-            left: Some(collect_from_heap(&mut nodes_left)),
-            right: Some(collect_from_heap(&mut nodes_right)),
-        };
-
-        Self {
-            root: root.clone(),
-            leaves,
-            current: Box::new(root),
-        }
+        tree
     }
     pub fn walk(&mut self, direction: u8) -> Option<usize> {
         let normalized_direction: u8 = match direction {
@@ -352,37 +403,49 @@ impl PrefixTree {
     }
 }
 
-fn collect_from_heap(heap: &mut BinaryHeap<Box<Node>>) -> Box<Node> {
-    while heap.len() > 1 {
-        let node_1 = heap.pop().unwrap();
-        let node_2 = heap.pop().unwrap();
-
-        let parent_code = node_1.code.buffer >> 1;
-        let parent_len = match node_1.code.length {
-            v if v != 0 => v - 1,
-            _ => 0,
-        };
-
-        let parent = Node {
-            value: None,
-            significance: parent_code as u64,
-            code: Code::from(parent_code, parent_len),
-            left: Some(node_2),
-            right: Some(node_1),
-        };
-
-        heap.push(Box::new(parent));
+impl Default for PrefixTree {
+    fn default() -> Self {
+        Self::new()
     }
-
-    heap.pop().unwrap()
 }
 
+impl fmt::Display for PrefixTree {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fn format_node(
+            node: &Option<Box<Node>>,
+            prefix: String,
+            is_right: bool,
+            f: &mut fmt::Formatter<'_>,
+        ) -> fmt::Result {
+            if let Some(node) = node {
+                writeln!(
+                    f,
+                    "{}{}({}{})",
+                    prefix,
+                    if is_right { "├── " } else { "└── " },
+                    node.code,
+                    if let Some(value) = node.value {
+                        format!(": {}", value)
+                    } else {
+                        String::new()
+                    }
+                )?;
+                let new_prefix = format!("{}{}", prefix, if is_right { "│   " } else { "    " });
+                format_node(&node.right, new_prefix.clone(), true, f)?;
+                format_node(&node.left, new_prefix, false, f)?;
+            }
+            Ok(())
+        }
+
+        writeln!(f, "{}", self.root)?;
+        format_node(&self.root.right, String::new(), true, f)?;
+        format_node(&self.root.left, String::new(), false, f)
+    }
+}
 #[cfg(test)]
 mod tests {
     use crate::bitstream::BitStream;
     use crate::prefix::{Code, PrefixTree};
-
-    use super::FIXED_CODE_LENGTHS;
 
     #[test]
     fn test_code() {
@@ -408,6 +471,7 @@ mod tests {
         assert_eq!(from_code.length, 10);
         assert_eq!(new_code.length, 2);
     }
+
     #[test]
     fn test_prefix() {
         let code_lengths = [3, 3, 3, 3, 3, 2, 4, 4];

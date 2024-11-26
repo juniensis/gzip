@@ -96,7 +96,7 @@ impl GzipHeader {
                     }
                 };
 
-                idx += after_header.len();
+                idx += after_header.len() + 1;
                 flags[3] = true;
             }
             fcomment if fcomment & 0b0001_0000 == 0b0001_0000 => {
@@ -118,7 +118,7 @@ impl GzipHeader {
                     }
                 };
 
-                idx += after_header.len();
+                idx += after_header.len() + 1;
                 flags[4] = true;
             }
             fhcrc if fhcrc & 0b0000_0010 == 0b0000_0010 => {
@@ -145,7 +145,7 @@ impl GzipHeader {
             fextra: _fextra,
             fname: _fname,
             fcomment: _fcomment,
-            end_idx: idx + 1,
+            end_idx: idx,
         })
     }
 }
@@ -173,7 +173,10 @@ impl GzipFile {
         let isize = u32::from_le_bytes([footer[4], footer[5], footer[6], footer[7]]);
 
         let deflate = bytes[header.end_idx..bytes.len() - 8].to_vec();
-
+        println!();
+        for byte in deflate.clone() {
+            println!("{:08b}", byte);
+        }
         Ok(Self {
             header,
             deflate,
