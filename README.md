@@ -1,4 +1,4 @@
-# GZIP Encoder/Decoder
+# GZIP Decoder
 
 ## Goals
 ### Decode
