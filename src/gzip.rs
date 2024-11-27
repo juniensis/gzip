@@ -1,5 +1,53 @@
 //! Gzip encoding and decoding.
-use std::{error::Error, fmt::Display};
+use std::{error::Error, fmt::Display, fs, path::Path};
+
+use crate::deflate::DeflateData;
+
+/// A custom error type for GZIP related errors.
+///
+/// # Members
+///
+/// * 'InvalidHeader' - Used when the header bytes are read, but something
+///             goes wrong while parsing them. Contains a Vec<u8> holding
+///             the bytes of the invalid header.
+/// * 'NotGzipFile' - Used when a file is read that does not contain the GZIP
+///             magic bytes (0x1f, 0x8b).
+/// * 'IoError' - Wrapper for std::io::Error.
+#[derive(Debug)]
+pub enum GzipError {
+    InvalidHeader(Vec<u8>),
+    NotGzipFile(Vec<u8>),
+    IoError(std::io::Error),
+}
+
+// Define how GzipErrors are displayed.
+impl Display for GzipError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GzipError::InvalidHeader(header) => {
+                write!(f, "Error: Failed to parse header bytes {:?}", header)
+            }
+            GzipError::NotGzipFile(magic_bytes) => {
+                write!(
+                    f,
+                    "Error: File missing GZIP ID bytes '{}, {}' does not equal '0x1f, 0x8b",
+                    magic_bytes[0], magic_bytes[1]
+                )
+            }
+            GzipError::IoError(err) => {
+                write!(f, "Error: Operation raised the io::Error: {}", err)
+            }
+        }
+    }
+}
+
+impl Error for GzipError {}
+
+impl From<std::io::Error> for GzipError {
+    fn from(err: std::io::Error) -> Self {
+        GzipError::IoError(err)
+    }
+}
 
 /// A struct containing the individual parts of a GZIP header.
 ///
@@ -22,6 +70,7 @@ use std::{error::Error, fmt::Display};
 /// * 'fextra' - An optional Vec<u8> containing the extra flags if provided.
 /// * 'fname' - An optional String containing the name of the original file.
 /// * 'fcomment' - An optional String containing the files comment if provided.
+#[derive(Debug)]
 pub struct GzipHeader {
     pub cm: u8,
     pub flg: [bool; 5],
@@ -36,9 +85,20 @@ pub struct GzipHeader {
 }
 
 impl GzipHeader {
+    /// Accepts the raw bytes from a GZIP file and parses out the header
+    /// elements.
+    ///
+    /// # Arguments
+    ///
+    /// * 'bytes' - A reference to the byte array containing the header.
+    ///
+    /// # Returns
+    ///
+    /// Either the successfully built header, or a GzipError due to either
+    /// failing to parse the header, or the bytes lacking the GZIP file
+    /// identification bytes.
     pub fn build(bytes: &[u8]) -> Result<Self, GzipError> {
-        // Initally define header as the first 10 bytes, then later append any
-        // optional header elements.
+        // Extract the core 10 byte header.
         let header = bytes[0..10].to_vec();
 
         // Split the header into each part.
@@ -54,7 +114,7 @@ impl GzipHeader {
             return Err(GzipError::NotGzipFile([header[0], header[1]].to_vec()));
         }
 
-        // Optional values.
+        // Initialize the option values as none.
         let mut _crc: Option<u16> = None;
         let mut _fextra: Option<Vec<u8>> = None;
         let mut _fname: Option<String> = None;
@@ -67,73 +127,64 @@ impl GzipHeader {
         // [3] = FNAME
         // [4] = FCOMMENT
         let mut flags: [bool; 5] = [false; 5];
-        let mut idx = 10;
-        match flg {
-            ftext if ftext & 0b0000_0001 == 0b0000_0001 => {
-                flags[0] = true;
+        flags
+            .iter_mut()
+            .enumerate()
+            .for_each(|(x, y)| *y = matches!((flg >> x) & 1, 1));
+
+        // The byte index to update as optional elements are found.
+        let mut _idx: usize = 10;
+
+        // If FEXTRA is set, collect the two bytes that dictate its size,
+        // and then take that amount of bytes from the data stream.
+        if flags[2] {
+            let xlen = u16::from_le_bytes([bytes[10], bytes[11]]);
+            _fextra = Some(bytes[12..xlen as usize].to_vec());
+            _idx += xlen as usize + 2;
+        }
+
+        if flags[3] {
+            let after_header = bytes[_idx..]
+                .iter()
+                .cloned()
+                .take_while(|byte| byte != &0u8)
+                .collect::<Vec<_>>();
+
+            _idx += after_header.len() + 1;
+
+            _fname = match String::from_utf8(after_header) {
+                Ok(name) => Some(name),
+                Err(_) => {
+                    return Err(GzipError::InvalidHeader(header));
+                }
             }
-            fextra if fextra & 0b0000_0100 == 0b0000_0100 => {
-                let xlen: usize = u16::from_le_bytes([bytes[10], bytes[11]]) as usize;
-                _fextra = Some(bytes[12..xlen].to_vec());
-                flags[2] = true;
+        }
+
+        if flags[4] {
+            let after_header = bytes[_idx..]
+                .iter()
+                .cloned()
+                .take_while(|byte| byte != &0u8)
+                .collect::<Vec<_>>();
+
+            _idx += after_header.len() + 1;
+
+            _fcomment = match String::from_utf8(after_header) {
+                Ok(comment) => Some(comment),
+                Err(_) => {
+                    return Err(GzipError::InvalidHeader(header));
+                }
             }
-            fname if fname & 0b0000_1000 == 0b0000_1000 => {
-                idx = match &_fextra {
-                    Some(v) => idx + v.len(),
-                    None => idx,
-                };
+        }
 
-                let after_header = bytes[idx..]
-                    .iter()
-                    .map(|x| x.to_owned())
-                    .take_while(|byte| byte != &0u8)
-                    .collect::<Vec<_>>();
+        // Now check for FHCRC because it occurs at the end of the header
+        // right before the DEFLATE data, so, _idx needs to be incremented as
+        // much as it will be before grabbing the crc.
+        if flags[1] {
+            _crc = Some(((bytes[_idx] as u16) << 8) | bytes[_idx + 1] as u16);
 
-                _fname = match String::from_utf8(after_header.clone()) {
-                    Ok(str) => Some(str),
-                    Err(_) => {
-                        return Err(GzipError::InvalidHeader(header));
-                    }
-                };
-
-                idx += after_header.len() + 1;
-                flags[3] = true;
-            }
-            fcomment if fcomment & 0b0001_0000 == 0b0001_0000 => {
-                idx = match &_fname {
-                    Some(v) => idx + v.len(),
-                    None => idx,
-                };
-
-                let after_header = bytes[idx..]
-                    .iter()
-                    .map(|x| x.to_owned())
-                    .take_while(|byte| byte != &0u8)
-                    .collect::<Vec<_>>();
-
-                _fcomment = match String::from_utf8(after_header.clone()) {
-                    Ok(str) => Some(str),
-                    Err(_) => {
-                        return Err(GzipError::InvalidHeader(header));
-                    }
-                };
-
-                idx += after_header.len() + 1;
-                flags[4] = true;
-            }
-            fhcrc if fhcrc & 0b0000_0010 == 0b0000_0010 => {
-                idx = match &_fcomment {
-                    Some(v) => idx + v.len(),
-                    None => idx,
-                };
-
-                _crc = Some(((bytes[idx] as u16) << 8) | bytes[idx + 1] as u16);
-
-                idx += 2;
-                flags[1] = true;
-            }
-            _ => {}
-        };
+            _idx += 2;
+        }
 
         Ok(Self {
             cm,
@@ -145,10 +196,11 @@ impl GzipHeader {
             fextra: _fextra,
             fname: _fname,
             fcomment: _fcomment,
-            end_idx: idx,
+            end_idx: _idx,
         })
     }
 }
+
 /// A struct containing the parts of a gzip file.
 ///
 /// # Fields
@@ -159,55 +211,61 @@ impl GzipHeader {
 /// * 'footer' - A byte vector containing the footer
 pub struct GzipFile {
     pub header: GzipHeader,
-    pub deflate: Vec<u8>,
+    pub deflate: DeflateData,
     pub crc32: u32,
     pub isize: u32,
 }
 
 impl GzipFile {
-    pub fn build(bytes: &[u8]) -> Result<Self, GzipError> {
+    /// Accepts a byte array and returns a GzipFile struct.
+    ///
+    /// # Arguments
+    ///
+    /// * 'bytes' - A reference to a byte array containing the gzip file.
+    ///
+    /// # Returns
+    ///
+    /// The built GzipFile struct, or an error if building the header failed.
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, GzipError> {
         let header = GzipHeader::build(bytes)?;
-        let footer = bytes[bytes.len() - 8..bytes.len()].to_vec();
+        let footer = &bytes[bytes.len() - 8..bytes.len()];
 
         let crc32 = u32::from_le_bytes([footer[0], footer[1], footer[2], footer[3]]);
         let isize = u32::from_le_bytes([footer[4], footer[5], footer[6], footer[7]]);
 
-        let deflate = bytes[header.end_idx..bytes.len() - 8].to_vec();
-        println!();
-        for byte in deflate.clone() {
-            println!("{:08b}", byte);
-        }
+        let deflate_raw = bytes[header.end_idx..bytes.len() - 8].to_vec();
+
         Ok(Self {
             header,
-            deflate,
+            deflate: DeflateData::build(&deflate_raw),
             crc32,
             isize,
         })
     }
-}
+    /// Accepts a path, extracts the bytes, and returns the built file from
+    /// those bytes.
+    ///
+    /// # Arguments
+    ///
+    /// * 'path' - A path in the form of any type that can be coerced into a
+    ///         Path.
+    ///
+    /// # Returns
+    ///
+    /// Either the GzipFile struct, or a GzipError.
+    pub fn from_path<P: AsRef<Path>>(path: P) -> Result<GzipFile, GzipError> {
+        let bytes = fs::read(path)?;
 
-#[derive(Debug)]
-pub enum GzipError {
-    InvalidHeader(Vec<u8>),
-    NotGzipFile(Vec<u8>),
-}
-
-// Define how GzipErrors are displayed.
-impl Display for GzipError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            GzipError::InvalidHeader(header) => {
-                write!(f, "Error: Failed to parse header bytes {:?}", header)
-            }
-            GzipError::NotGzipFile(magic_bytes) => {
-                write!(
-                    f,
-                    "Error: File missing GZIP ID bytes '{}, {}' does not equal '0x1f, 0x8b",
-                    magic_bytes[0], magic_bytes[1]
-                )
-            }
-        }
+        Self::from_bytes(&bytes)
     }
 }
 
-impl Error for GzipError {}
+#[cfg(test)]
+mod tests {
+    use super::GzipFile;
+
+    #[test]
+    fn test_gzip_file() {
+        let file = GzipFile::from_path("./tests/data/block_type_0.gz").unwrap();
+    }
+}

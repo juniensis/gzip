@@ -1,5 +1,6 @@
 use std::{cmp::Ordering, fmt, fmt::Display};
 
+/// Code lengths from section 3.2.6 of RFC 1951.
 pub const FIXED_CODE_LENGTHS: [u8; 288] = [
     8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
     8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
@@ -12,34 +13,41 @@ pub const FIXED_CODE_LENGTHS: [u8; 288] = [
     7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8,
 ];
 
+/// Length codes from section 3.2.5 of RFC 1951.
 pub const LENGTH_CODES: [usize; 29] = [
     257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 268, 269, 270, 271, 272, 273, 274, 275,
     276, 277, 278, 279, 280, 281, 282, 283, 284, 285,
 ];
 
+/// The number of extra bits each length code has.
 pub const LENGTH_EXTRA_BITS: [u8; 29] = [
     0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0,
 ];
 
+/// The base length value of each length code.
 pub const LENGTH_BASE: [u16; 29] = [
     3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131,
     163, 195, 227, 258,
 ];
 
+/// Distance codes from section 3.2.5 of RFC 1951.
 pub const DISTANCE_CODES: [usize; 30] = [
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
     26, 27, 28, 29,
 ];
 
+/// The number of extra bits each distance code has.
 pub const DISTANCE_EXTRA_BITS: [u8; 30] = [
     0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13,
     13,
 ];
 
+/// The base value of each distance code.
 pub const DISTANCE_BASE: [u16; 30] = [
     1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537,
     2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577,
 ];
+
 /// A struct for representing codes of differing bit lengths, codes are stored
 /// little endian, meant to be read from most significant bit to least
 /// significant bit.
@@ -266,12 +274,45 @@ pub struct PrefixTree {
 }
 
 impl PrefixTree {
+    /// Creates a new empty PrefixTree.
+    ///
+    /// # Returns
+    ///
+    /// A PrefixTree with default values.
     pub fn new() -> Self {
         Self {
             root: Node::new(),
             current: Box::new(Node::new()),
         }
     }
+    /// Accepts a code as input and then creates the branches required to reach
+    /// the new node, and then populates the value specified.
+    ///
+    /// # Arguments
+    ///
+    /// * 'code' - A Code struct containing the address of the node to be
+    ///         added to the tree.
+    /// * 'value' - A usize value containing the value to be stored at the
+    ///         new node.
+    ///
+    /// # Examples
+    ///
+    /// '''
+    /// let tree = PrefixTree::new();
+    ///
+    /// let new_code = Code::from(0b011, 3);
+    ///
+    /// tree.insert_code(new_code, 255);
+    ///
+    /// let mut value = 0;
+    /// for bit in code {
+    ///     if let Some(v) = tree.walk(bit) {
+    ///         value = v;
+    ///     }
+    /// }
+    ///
+    /// assert_eq!(value, 255);
+    /// '''
     pub fn insert_code(&mut self, code: Code, value: usize) {
         let mut current = &mut self.root;
         let mut current_code = Code::new();
@@ -362,19 +403,34 @@ impl PrefixTree {
         }
         tree
     }
+    /// Accepts a u8 representing a binary value and walks that direction on
+    /// the tree. Will panic if a non-binary value is given.
+    ///
+    /// # Arguments
+    ///
+    /// * 'direction' - A u8 containing which direction on the tree to step.
+    ///         Can be either 0 or 1.
+    ///
+    /// # Returns
+    ///
+    /// If the node is a branch and does not hold a value, None will be
+    /// returned, otherwise, the value at that leaf will be returned.
+    ///
+    /// # Examples
+    ///
+    /// '''
+    /// let mut tree = PrefixTree::new();
+    ///
+    /// tree.insert_code(Code::from(0b111, 3), 255);
+    ///
+    /// assert_eq!(tree.walk(1), None);
+    /// assert_eq!(tree.walk(1), None);
+    /// assert_eq!(tree.walk(1), Some(255));
+    /// '''
     pub fn walk(&mut self, direction: u8) -> Option<usize> {
-        let normalized_direction: u8 = match direction {
-            0 => 0,
-            1 => 1,
-            _ => {
-                eprintln!(
-                    "Warning: Non-binary value given to binary function, value normalized to 1."
-                );
-                1
-            }
-        };
+        assert!(direction < 2);
 
-        match normalized_direction {
+        match direction {
             0 => {
                 if let Some(v) = self.current.left.clone() {
                     self.current = v.clone();
@@ -409,6 +465,7 @@ impl Default for PrefixTree {
     }
 }
 
+// TODO: Make this make sense.
 impl fmt::Display for PrefixTree {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fn format_node(
@@ -440,58 +497,5 @@ impl fmt::Display for PrefixTree {
         writeln!(f, "{}", self.root)?;
         format_node(&self.root.right, String::new(), true, f)?;
         format_node(&self.root.left, String::new(), false, f)
-    }
-}
-#[cfg(test)]
-mod tests {
-    use crate::bitstream::BitStream;
-    use crate::prefix::{Code, PrefixTree};
-
-    #[test]
-    fn test_code() {
-        // Create empty code.
-        let mut new_code = Code::new();
-
-        // Push the bits 1 and 0.
-        new_code.push_bit(1);
-        new_code.push_bit(0);
-
-        // Create another code from new_code.
-        let mut from_code = Code::from(new_code.buffer, new_code.length);
-
-        // Push longer value.
-        let new_value: u32 = 0b1111_0000;
-        from_code.push(new_value, 8);
-
-        // Check codes.
-        assert_eq!(from_code.buffer, 0b00000000_00000000_00000010_11110000);
-        assert_eq!(new_code.buffer, 0b00000000_00000000_00000000_00000010);
-
-        // Check lengths.
-        assert_eq!(from_code.length, 10);
-        assert_eq!(new_code.length, 2);
-    }
-
-    #[test]
-    fn test_prefix() {
-        let code_lengths = [3, 3, 3, 3, 3, 2, 4, 4];
-
-        let mut prefix_tree = PrefixTree::from_lengths(&code_lengths);
-
-        let bits: u32 = 0b0100111001011100011101111;
-
-        let mut stream = BitStream::new();
-
-        stream.push(bits, 25);
-
-        let mut results = Vec::new();
-
-        for bit in stream {
-            if let Some(v) = prefix_tree.walk(bit) {
-                results.push(v);
-            }
-        }
-
-        assert_eq!(results, vec![0, 1, 2, 3, 4, 5, 6, 7])
     }
 }

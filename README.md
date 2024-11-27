@@ -392,7 +392,8 @@ bit, and 00110100 1 being the distance code with the extra bit.
 ### 3.2.3 Block Type 2
 TODO
 
-### Extra
+## 4. Prefix Codes
+## Extra
 Fig 1. Unabridged fixed prefix code table.
 
     +---------------------------------------------------------------------------+
