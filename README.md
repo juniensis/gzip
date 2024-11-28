@@ -205,8 +205,8 @@ of LZ77 that performs checks to ensure the token generated is more space efficie
 value. Inversely likewise, what are referred to as Huffman Codes, are derived from bit lengths rather than 
 a frequency based Huffman tree, making "prefix codes" the more correct terminology as utilized in the papers 
 RFC 1951 references. Beyond semantics, this is just useful to avoid my mistake of implementing frequency based 
-Huffman trees, before finding out they won't be particularly useful. Anyways, the DEFLATE data format is made
-up of an arbitrary number of blocks of various types containing a header, a compressed data stream (with bits 
+Huffman trees, before finding out they won't be particularly useful for decoding. Anyways, the DEFLATE data format 
+is made up of an arbitrary number of blocks of various types containing a header, a compressed data stream (with bits 
 pushed into it as described in section 2), and an EOB marker except for block type 0. The header format changes 
 depending on the block type yet all headers begin with three bits defining whether the block is the last, and 
 what type the block is.
@@ -240,9 +240,9 @@ the block has already been confirmed to be of type 0):
 
     output = []
     // Conversion from bytes to u16, the least significant byte comes first.
-    // [0b0000_0001, 0b_0000_0000] -> 0b0000_0000_0000_0000 & 0b0000_0000_0000_0001 -> 1u16
-    len = (input[2] as u16 << 8) & input[1] as u16
-    nlen = (input[4] as u16 << 8) & input[3] as u16
+    // [0b0000_0001, 0b_0000_0000] -> 0b0000_0000_0000_0000 | 0b0000_0000_0000_0001 -> 1u16
+    len = (input[2] as u16 << 8) | input[1] as u16
+    nlen = (input[4] as u16 << 8) | input[3] as u16
     // Optional check that len == ~nlen.
     if len == ~nlen:
       for byte in input[5:len]:
@@ -262,8 +262,8 @@ Here is an example of decoding a DEFLATE block of type 0:
       a section for LEN and NLEN after 5 bits of padding.
       BFINAL/BTYPE/PADDING: 1000_0000
       Because LEN is a number it is pushed in the bitstream LSB first,
-      so with how the bitstream is packed into bytes, the value is
-      held normally in the bytes, in this case 0x00 0x03 = 3.
+      so with how the conversion from bytes to bitstream occurs, the value
+      is held LSB on the right in the bytes in this case 0x00 0x03 = 3.
       LEN: 1100_0000_0000_0000
       NLEN: 0011_1111_1111_1111
       We know the next 3 bytes are the complete data in the file.

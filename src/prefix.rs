@@ -401,6 +401,7 @@ impl PrefixTree {
                 tree.insert_code(code_struct, index);
             }
         }
+
         tree
     }
     /// Accepts a u8 representing a binary value and walks that direction on
@@ -497,5 +498,19 @@ impl fmt::Display for PrefixTree {
         writeln!(f, "{}", self.root)?;
         format_node(&self.root.right, String::new(), true, f)?;
         format_node(&self.root.left, String::new(), false, f)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PrefixTree;
+
+    #[test]
+    fn test_from_code_lengths() {
+        let code_lengths = [2, 5, 0, 5, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 3];
+
+        let tree = PrefixTree::from_lengths(&code_lengths);
+
+        println!("{}", tree);
     }
 }

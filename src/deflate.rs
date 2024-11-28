@@ -1,3 +1,4 @@
+use core::arch;
 use std::{collections::HashMap, error::Error, fmt::Display};
 
 use crate::{
@@ -76,6 +77,7 @@ impl DeflateData {
                     println!("BTYPE 1");
                 }
                 (0, 1) => {
+                    self.block_type_2()?;
                     println!("BTYPE 2");
                 }
                 _ => return Err(DeflateError::InvalidBlockError("Invalid BTYPE.")),
@@ -159,7 +161,7 @@ impl DeflateData {
                         let mut additional_length = 0;
                         for _ in 0..len_extra {
                             if let Some(bit) = self.bitstream.by_ref().next() {
-                                additional_length = (additional_length << 1) & bit;
+                                additional_length = (additional_length << 1) | bit;
                             }
                         }
                         _length += additional_length as u16;
@@ -169,7 +171,7 @@ impl DeflateData {
                     let mut _distance: usize = 0;
                     for _ in 0..5 {
                         if let Some(bit) = self.bitstream.by_ref().next() {
-                            _distance = (_distance << 1) & bit as usize;
+                            _distance = (_distance << 1) | bit as usize;
                         }
                     }
 
@@ -187,7 +189,7 @@ impl DeflateData {
                         let mut additional_distance = 0;
                         for _ in 0..dist_extra {
                             if let Some(bit) = self.bitstream.by_ref().next() {
-                                additional_distance = (additional_distance << 1) & bit;
+                                additional_distance = (additional_distance << 1) | bit;
                             }
                         }
                         _distance = (dist_base + (additional_distance as u16)) as usize;
@@ -212,6 +214,126 @@ impl DeflateData {
             .for_each(|byte| self.decompressed.push(byte));
         Ok(())
     }
+    fn block_type_2(&mut self) -> Result<(), DeflateError> {
+        // # of literal/length codes - 257 (257..286)
+        let mut hlit = self
+            .bitstream
+            .by_ref()
+            .take(5)
+            .fold(0u16, |acc, bit| (acc << 1) | bit as u16)
+            .reverse_bits();
+
+        // # of distance codes - 1 (1..32)
+        let mut hdist = self
+            .bitstream
+            .by_ref()
+            .take(5)
+            .fold(0u8, |acc, bit| (acc << 1) | bit)
+            .reverse_bits();
+
+        // # of code length codes - 4 (4..19)
+        let mut hclen = self
+            .bitstream
+            .by_ref()
+            .take(4)
+            .fold(0u8, |acc, bit| (acc << 1) | bit)
+            .reverse_bits();
+
+        hlit >>= 11;
+        hdist >>= 3;
+        hclen >>= 4;
+
+        println!("{} {} {}", hlit, hdist, hclen);
+
+        // Code lengths for the code lengths.
+        let cl_len_vec = self
+            .bitstream
+            .by_ref()
+            .take(((hclen + 4) * 3) as usize)
+            .collect::<Vec<_>>();
+
+        //
+        let mut cl_lengths = [0; 19];
+        let mut cl_lengths_sorted = [0; 19];
+
+        // Put code lengths into cl_lengths in the order:
+        // 16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15
+        for (i, len) in cl_len_vec.chunks(3).enumerate() {
+            let value = len.iter().rev().fold(0u8, |acc, bit| (acc << 1) | *bit);
+
+            cl_lengths[i] = value;
+        }
+        println!("{:?}", cl_lengths);
+        for (i, len) in cl_lengths_sorted.iter_mut().enumerate() {
+            *len = match i {
+                16 => cl_lengths[0],
+                17 => cl_lengths[1],
+                18 => cl_lengths[2],
+                0 => cl_lengths[3],
+                8 => cl_lengths[4],
+                7 => cl_lengths[5],
+                9 => cl_lengths[6],
+                6 => cl_lengths[7],
+                10 => cl_lengths[8],
+                5 => cl_lengths[9],
+                11 => cl_lengths[10],
+                4 => cl_lengths[11],
+                12 => cl_lengths[12],
+                3 => cl_lengths[13],
+                13 => cl_lengths[14],
+                2 => cl_lengths[15],
+                14 => cl_lengths[16],
+                1 => cl_lengths[17],
+                15 => cl_lengths[18],
+                _ => 0,
+            }
+        }
+
+        println!("{:?}", cl_lengths_sorted);
+        // Generate the code length prefix tree.
+        let mut code_length_tree = PrefixTree::from_lengths(&cl_lengths_sorted);
+
+        let mut code_lengths: Vec<u8> = Vec::new();
+
+        while code_lengths.len() < (hlit as usize + 257 + hdist as usize + 1) {
+            if let Some(bit) = self.bitstream.by_ref().next() {
+                if let Some(symbol) = code_length_tree.walk(bit) {
+                    match symbol {
+                        0..16 => code_lengths.push(symbol as u8),
+                        16..=18 => {
+                            let mut _extra_bits = 0u8;
+
+                            for i in (0..match symbol {
+                                16 => 2,
+                                17 => 3,
+                                _ => 7,
+                            })
+                                .rev()
+                            {
+                                if let Some(x) = self.bitstream.by_ref().next() {
+                                    _extra_bits |= x << i;
+                                }
+                            }
+                            if symbol == 16 {
+                                for _ in 0.._extra_bits {
+                                    code_lengths.push(*code_lengths.last().unwrap_or(&0));
+                                }
+                            } else {
+                                code_lengths.resize(code_lengths.len() + _extra_bits as usize, 0);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        let ll_tree = PrefixTree::from_lengths(&code_lengths);
+
+        println!("{}", ll_tree);
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -220,7 +342,7 @@ mod tests {
 
     #[test]
     fn decompress_test() {
-        let mut file = GzipFile::from_path("./tests/data/block_type_1_abc.gz").unwrap();
+        let mut file = GzipFile::from_path("./tests/data/block_type_2.gz").unwrap();
 
         file.deflate.decompress().unwrap();
         println!("{}", String::from_utf8_lossy(&file.deflate.decompressed));
