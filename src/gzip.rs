@@ -1,7 +1,7 @@
 //! Gzip encoding and decoding.
 use std::{error::Error, fmt::Display, fs, path::Path};
 
-use crate::inflate::DeflateData;
+use crate::inflate::{DeflateData, DeflateError};
 
 /// A custom error type for GZIP related errors.
 ///
@@ -232,7 +232,7 @@ impl GzipFile {
 
         let crc32 = u32::from_le_bytes([footer[0], footer[1], footer[2], footer[3]]);
         let isize = u32::from_le_bytes([footer[4], footer[5], footer[6], footer[7]]);
-        println!("{}", header.end_idx);
+
         let deflate_raw = bytes[header.end_idx..bytes.len() - 8].to_vec();
 
         Ok(Self {
@@ -258,14 +258,10 @@ impl GzipFile {
 
         Self::from_bytes(&bytes)
     }
-}
+    #[inline]
+    pub fn decompress(&mut self) -> Result<Vec<u8>, DeflateError> {
+        let data = self.deflate.decompress()?;
 
-#[cfg(test)]
-mod tests {
-    use super::GzipFile;
-    #[ignore]
-    #[test]
-    fn test_gzip_file() {
-        let file = GzipFile::from_path("./tests/data/block_type_0.gz").unwrap();
+        Ok(data)
     }
 }

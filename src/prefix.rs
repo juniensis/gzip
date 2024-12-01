@@ -466,7 +466,6 @@ impl Default for PrefixTree {
     }
 }
 
-// TODO: Make this make sense.
 impl fmt::Display for PrefixTree {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fn format_node(
@@ -498,19 +497,5 @@ impl fmt::Display for PrefixTree {
         writeln!(f, "{}", self.root)?;
         format_node(&self.root.right, String::new(), true, f)?;
         format_node(&self.root.left, String::new(), false, f)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::PrefixTree;
-
-    #[test]
-    fn test_from_code_lengths() {
-        let code_lengths = [2, 5, 0, 5, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 3];
-
-        let tree = PrefixTree::from_lengths(&code_lengths);
-
-        println!("{}", tree);
     }
 }

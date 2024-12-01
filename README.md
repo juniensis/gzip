@@ -4,20 +4,21 @@
 ### Decode
 - [x] Parse header.
 
-- [ ] DEFLATE
+- [x] DEFLATE
     - [x] Read block header.
     - [x] Process block type 0.
     - [x] Process block type 1.
-        - [x] Generate fixed prefix codes.
-        - [x] Bytes to bitstream.
+        - [x] Generate fixed prefix code tree.
         - [x] Bitstream to symbols.
-        - [x] LZSS
-    - [ ] Process block type 2.
-        - [ ] Generate dynamic prefix codes.
-        - [ ] Bytes to bitstream.
-        - [ ] Bitstream to symbols.
-        - [ ] LZSS
-- [ ] Output.
+        - [x] Decode LZSS.
+    - [x] Process block type 2.
+        - [x] Generate code length prefix code tree.
+        - [x] Generate literal/length prefix code tree.
+        - [x] Generate distance prefix code tree.
+        - [x] Bitstream to symbols.
+        - [x] Decode LZSS
+
+- [ ] Confirm CRC-32 checksum
 
 ## 1. The GZIP Format
 
@@ -97,7 +98,7 @@ the original uncompressed data. This is referred to as the trailer, and takes th
          +---+---+---+---+---+---+---+---+
 
 CRC32 is the check value of the original uncompressed data computed from the CRC-32 algorithm. It's
-implementation in this program will be described late, however, in the mean time, the Wikipedia page
+implementation in this program will be described if/when it is implemented, however, in the mean time, the Wikipedia page
 on cyclic redundancy checks (https://en.wikipedia.org/wiki/Cyclic_redundancy_check) provides a good
 example of encoding a 14 bit message with a 3 bit CRC with the polynomial x^3 + x + 1:
   
