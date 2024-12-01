@@ -1,10 +1,10 @@
-use std::{collections::HashMap, error::Error, fmt::Display};
+use std::{error::Error, fmt::Display};
 
 use crate::{
     bits::BitVector64,
     prefix::{
-        PrefixTree, DISTANCE_BASE, DISTANCE_CODES, DISTANCE_EXTRA_BITS, FIXED_CODE_LENGTHS,
-        LENGTH_BASE, LENGTH_CODES, LENGTH_EXTRA_BITS,
+        PrefixTree, DISTANCE_BASE, DISTANCE_EXTRA_BITS, FIXED_CODE_LENGTHS, LENGTH_BASE,
+        LENGTH_EXTRA_BITS,
     },
 };
 
@@ -120,23 +120,6 @@ impl DeflateData {
     fn block_type_1(&mut self) -> Result<(), DeflateError> {
         let mut prefix_tree = PrefixTree::from_lengths(&FIXED_CODE_LENGTHS);
 
-        // Generate HashMaps from the constant value tables in prefix.
-        let mut length_extra = HashMap::new();
-        let mut length_base = HashMap::new();
-
-        let mut distance_extra = HashMap::new();
-        let mut distance_base = HashMap::new();
-
-        for (idx, length) in LENGTH_CODES.iter().enumerate() {
-            length_extra.insert(length.to_owned(), LENGTH_EXTRA_BITS[idx]);
-            length_base.insert(length.to_owned(), LENGTH_BASE[idx]);
-        }
-
-        for (idx, distance) in DISTANCE_CODES.iter().enumerate() {
-            distance_extra.insert(distance.to_owned(), DISTANCE_EXTRA_BITS[idx]);
-            distance_base.insert(distance.to_owned(), DISTANCE_BASE[idx]);
-        }
-
         let mut output = Vec::new();
 
         // Iterate through the bitstream.
@@ -153,48 +136,40 @@ impl DeflateData {
                     // Unwrap is called because the only circumstance this
                     // is a call to a HashMap made from a const table, so if
                     // it returns None something else has gone horribly wrong.
-                    let mut _length = *length_base.get(&value).unwrap();
-                    let len_extra = *length_extra.get(&value).unwrap();
+                    let mut _length = LENGTH_BASE[value - 257];
+                    let len_extra = LENGTH_EXTRA_BITS[value - 257];
                     // If length has extra bits, iterate through them, and add
                     // the value to the base length.
                     if len_extra > 0 {
-                        let mut additional_length = 0;
-                        for _ in 0..len_extra {
-                            if let Some(bit) = self.bitstream.by_ref().next() {
-                                additional_length = (additional_length << 1) | bit;
-                            }
-                        }
-                        _length += additional_length as u16;
+                        let additional_length = self
+                            .bitstream
+                            .by_ref()
+                            .take(len_extra as usize)
+                            .fold(0u16, |acc, bit| (acc << 1) | bit as u16)
+                            .reverse_bits()
+                            >> (16 - len_extra);
+                        _length += additional_length;
                     }
 
                     // After every length code is a 5 bit distance code.
-                    let mut _distance: usize = 0;
-                    for _ in 0..5 {
-                        if let Some(bit) = self.bitstream.by_ref().next() {
-                            _distance = (_distance << 1) | bit as usize;
-                        }
-                    }
+                    let mut _distance: usize = self
+                        .bitstream
+                        .by_ref()
+                        .take(5)
+                        .fold(0usize, |acc, bit| (acc << 1) | bit as usize);
 
-                    let (dist_extra, dist_base) = match (
-                        distance_extra.get(&_distance),
-                        distance_base.get(&_distance),
-                    ) {
-                        (Some(extra), Some(base)) => (*extra, *base),
-                        (_, _) => {
-                            return Err(DeflateError::InvalidSymbolError(_distance, "Failed to get distance code base and extra bits, invalid distance code symbol."));
-                        }
-                    };
+                    let dist_extra = DISTANCE_EXTRA_BITS[_distance];
+                    let dist_base = DISTANCE_BASE[_distance];
 
                     if dist_extra > 0 {
-                        let mut additional_distance = 0;
-                        for _ in 0..dist_extra {
-                            if let Some(bit) = self.bitstream.by_ref().next() {
-                                additional_distance = (additional_distance << 1) | bit;
-                            }
-                        }
-                        _distance = (dist_base
-                            + ((additional_distance as u16).reverse_bits() >> (16 - dist_extra)))
-                            as usize;
+                        let additional_distance = self
+                            .bitstream
+                            .by_ref()
+                            .take(dist_extra as usize)
+                            .fold(0u16, |acc, bit| (acc << 1) | bit as u16)
+                            .reverse_bits()
+                            >> (16 - dist_extra);
+                        _distance = (dist_base + additional_distance) as usize;
                     } else {
                         _distance = dist_base as usize;
                     }
@@ -217,23 +192,6 @@ impl DeflateData {
         Ok(())
     }
     fn block_type_2(&mut self) -> Result<(), DeflateError> {
-        // Generate HashMaps from the constant value tables in prefix.
-        let mut length_extra = HashMap::new();
-        let mut length_base = HashMap::new();
-
-        let mut distance_extra = HashMap::new();
-        let mut distance_base = HashMap::new();
-
-        for (idx, length) in LENGTH_CODES.iter().enumerate() {
-            length_extra.insert(length.to_owned(), LENGTH_EXTRA_BITS[idx]);
-            length_base.insert(length.to_owned(), LENGTH_BASE[idx]);
-        }
-
-        for (idx, distance) in DISTANCE_CODES.iter().enumerate() {
-            distance_extra.insert(distance.to_owned(), DISTANCE_EXTRA_BITS[idx]);
-            distance_base.insert(distance.to_owned(), DISTANCE_BASE[idx]);
-        }
-
         // # of literal/length codes - 257 (257..286)
         let hlit = self
             .bitstream
@@ -354,17 +312,18 @@ impl DeflateData {
                 if sym < 256 {
                     output.push(sym);
                 } else if let 257..285 = sym {
-                    let mut _length = *length_base.get(&sym).unwrap();
-                    let len_extra = *length_extra.get(&sym).unwrap();
+                    let mut _length = LENGTH_BASE[sym - 257];
+                    let len_extra = LENGTH_EXTRA_BITS[sym - 257];
 
                     if len_extra > 0 {
-                        let mut additional_length = 0;
-                        for _ in 0..len_extra {
-                            if let Some(bit) = self.bitstream.by_ref().next() {
-                                additional_length = (additional_length << 1) | bit;
-                            }
-                        }
-                        _length += additional_length as u16;
+                        let additional_length = self
+                            .bitstream
+                            .by_ref()
+                            .take(len_extra as usize)
+                            .fold(0u16, |acc, bit| (acc << 1) | bit as u16)
+                            .reverse_bits()
+                            >> (16 - len_extra);
+                        _length += additional_length;
                     }
 
                     // Distance codes are encoded.
@@ -378,26 +337,18 @@ impl DeflateData {
                         }
                     }
 
-                    let (dist_extra, dist_base) = match (
-                        distance_extra.get(&_distance),
-                        distance_base.get(&_distance),
-                    ) {
-                        (Some(extra), Some(base)) => (*extra, *base),
-                        (_, _) => {
-                            return Err(DeflateError::InvalidSymbolError(_distance, "Failed to get distance code base and extra bits, invalid distance code symbol."));
-                        }
-                    };
+                    let dist_extra = DISTANCE_EXTRA_BITS[_distance];
+                    let dist_base = DISTANCE_BASE[_distance];
 
                     if dist_extra > 0 {
-                        let mut additional_distance = 0;
-                        for _ in 0..dist_extra {
-                            if let Some(bit) = self.bitstream.by_ref().next() {
-                                additional_distance = (additional_distance << 1) | bit;
-                            }
-                        }
-                        _distance = (dist_base
-                            + ((additional_distance as u16).reverse_bits() >> (16 - dist_extra)))
-                            as usize;
+                        let additional_distance = self
+                            .bitstream
+                            .by_ref()
+                            .take(dist_extra as usize)
+                            .fold(0u16, |acc, bit| (acc << 1) | bit as u16)
+                            .reverse_bits()
+                            >> (16 - dist_extra);
+                        _distance = (dist_base + additional_distance) as usize;
                     } else {
                         _distance = dist_base as usize;
                     }

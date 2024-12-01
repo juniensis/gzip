@@ -13,12 +13,6 @@ pub const FIXED_CODE_LENGTHS: [u8; 288] = [
     7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8,
 ];
 
-/// Length codes from section 3.2.5 of RFC 1951.
-pub const LENGTH_CODES: [usize; 29] = [
-    257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 268, 269, 270, 271, 272, 273, 274, 275,
-    276, 277, 278, 279, 280, 281, 282, 283, 284, 285,
-];
-
 /// The number of extra bits each length code has.
 pub const LENGTH_EXTRA_BITS: [u8; 29] = [
     0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0,
@@ -28,12 +22,6 @@ pub const LENGTH_EXTRA_BITS: [u8; 29] = [
 pub const LENGTH_BASE: [u16; 29] = [
     3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131,
     163, 195, 227, 258,
-];
-
-/// Distance codes from section 3.2.5 of RFC 1951.
-pub const DISTANCE_CODES: [usize; 30] = [
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
-    26, 27, 28, 29,
 ];
 
 /// The number of extra bits each distance code has.
