@@ -1,7 +1,7 @@
 //! Gzip encoding and decoding.
 use std::{error::Error, fmt::Display, fs, path::Path};
 
-use crate::deflate::DeflateData;
+use crate::inflate::DeflateData;
 
 /// A custom error type for GZIP related errors.
 ///
