@@ -1,7 +1,10 @@
 //! Gzip encoding and decoding.
 use std::{error::Error, fmt::Display, fs, path::Path};
 
-use crate::inflate::{DeflateData, DeflateError};
+use crate::{
+    crc,
+    inflate::{DeflateData, DeflateError},
+};
 
 /// A custom error type for GZIP related errors.
 ///
@@ -261,6 +264,12 @@ impl GzipFile {
     #[inline]
     pub fn decompress(&mut self) -> Result<Vec<u8>, DeflateError> {
         let data = self.deflate.decompress()?;
+
+        let crc = crc::hash(&data);
+
+        if self.crc32 != crc {
+            return Err(DeflateError::DecompressionError("Checksums do not match."));
+        }
 
         Ok(data)
     }

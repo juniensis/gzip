@@ -12,6 +12,7 @@ use crate::{
 pub enum DeflateError {
     InvalidBlockError(&'static str),
     InvalidSymbolError(usize, &'static str),
+    DecompressionError(&'static str),
 }
 
 impl Display for DeflateError {
@@ -22,6 +23,9 @@ impl Display for DeflateError {
             }
             DeflateError::InvalidSymbolError(v, r) => {
                 write!(f, "InvalidSymbolError cause by symbol: {}, {}", v, r)
+            }
+            DeflateError::DecompressionError(s) => {
+                write!(f, "DecompressionError: {}", s)
             }
         }
     }

@@ -18,7 +18,7 @@
         - [x] Bitstream to symbols.
         - [x] Decode LZSS
 
-- [ ] Confirm CRC-32 checksum
+- [x] Confirm CRC-32 checksum
 
 ## 1. The GZIP Format
 
