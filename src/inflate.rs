@@ -73,15 +73,12 @@ impl DeflateData {
             match (header[1], header[2]) {
                 (0, 0) => {
                     self.block_type_0()?;
-                    println!("{}", String::from_utf8_lossy(&self.decompressed));
                 }
                 (1, 0) => {
                     self.block_type_1()?;
-                    println!("BTYPE 1");
                 }
                 (0, 1) => {
                     self.block_type_2()?;
-                    println!("BTYPE 2");
                 }
                 _ => return Err(DeflateError::InvalidBlockError("Invalid BTYPE.")),
             }

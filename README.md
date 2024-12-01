@@ -391,9 +391,169 @@ the bitstream would look like: 00010011001101001 with 0001001 1 being the length
 bit, and 00110100 1 being the distance code with the extra bit.
 
 ### 3.2.3 Block Type 2
-TODO
+Block type 2 behaves quite similarly to block type 1, however, with the enormous difference of 
+encoding the prefix code lengths within the header. The process of encoding block type 2 consists
+of taking the input data, adding an EOB marker, and applying LZSS to generate literals and length/
+distance pairs. Then, based on the data generate prefix codes for the lengths/literals and the 
+distances, before taking the code lengths of these prefix codes, and creating prefix codes for the 
+lengths of the prefix codes (confusing right?). The code lengths are then encoded into the header,
+and finally the input data can be encoded into the bitstream using the literal/length and distance
+prefix codes. This all is very confusing, so let's just start with outlining what a block of type
+2 looks like. 
 
-## 4. Prefix Codes
+          BFINAL  BTYPE  HLIT  HDIST  HCLEN    CL Lengths    LL Lengths     Dist Lengths
+    BITS: 1       2      5     5      4       (HCLEN + 4)*3  HLIT + 257     HDIST + 1
+    
+          DATA ... EOB
+
+So, after the 3 bit header all blocks share, there is HLIT, which represents how many code lengths
+are present for literals and lengths. Every block needs to specify either a code or the absence of a 
+code for every byte, and a code for EOB, so HLIT contains the number of total literals/lengths - 257.
+HDIST contains the number of distance codes - 1. HCLEN describes the number of code length codes - 4,
+the code lengths are encoded as 3 bit integers directly after HCLEN, in the field CL Lengths. Then,
+with the code lengths in CL Lengths, a prefix code tree is built and used to parse the LL and Dist 
+lengths. Lets decode a block by hand, this will take some time.
+
+    1010001010110011100000111001000011000011000011000011000010100000000010
+    1111011110111001010001111111000000001000001111001010001011110001101001
+    0111011100000111001000110100010000111110000010011011010011000110100100
+    1010011001111111011001010010111100001011100000000111100011110111101001    
+    1011010010010111000001110010111100110111000101100110010101101101000001
+    1100110000001010110111010010001101100001110000110110000111010011100010
+    0001001000100111010000101011011000111001001011111100000111000111001000
+    0100010100110001010000011110111001010101011010110111000111010100101011
+    1001100110001010110000100000110000010111010100010101100111100110010100
+    1101100000111010010110000001101111100101001101010110001010010000000101
+    0011101110100110100110000110010110110101000100000110001110111010000011
+    0110101000001111001100100101111111101110000101100011011101001100010001
+    1101111011111000011011000111111000111000111010001100010101010011111110
+    11111010000011110001111100
+
+    BFINAL: 1
+    BTYPE: 01 -> 10 = 2
+    HLIT: 00010 -> 01000 = 8 
+    HDIST: 10110 -> 01101 = 13
+    HCLEN: 0111 -> 1110 = 14
+
+    Then take (14 + 4) * 3 bits to get the CL Lengths.
+
+    000  001  110  010  000  110  000  110  000  110  000  110  000  101  000  000  000  101
+
+    Flip due to rule #1.
+
+    000  100  011  010  000  011  000  011  000  011  000  011  000  101  000  000  000  101
+    0    4    3    2    0    3    0    3    0    3    0    3    0    5    0    0    0    5
+
+Now we get to one of the most devious parts of block type 2. Without specifying why, the RFC 
+just states that the order these code lengths appear in is as follows: 16, 17, 18, 0, 8, 7, 9, 
+6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15.
+    
+    16:  17:  18:  0:   8:   7:   9:   6:   10:  5:   11:  4:   12:  3:   13:  2:   14:  1:
+    000  100  011  010  000  011  000  011  000  011  000  011  000  101  000  000  000  101
+    0    4    3    2    0    3    0    3    0    3    0    3    0    5    0    0    0    5
+
+    Sort them back into a normal order.
+    0...                                                   18
+    [2, 5, 0, 5, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 3]
+
+    Now it's time to generate the codes and build the prefix code tree.
+
+    First get the number of occurances of each code length, ignoring 0.
+    
+    0: 0, 1: 0, 2: 1, 3: 5, 4: 1, 5: 2
+  
+    Now generate the next codes for each code length. This is done by iterating over
+    each nonzero code length, from lowest to highest, and setting its next code as
+    the previous code + the number the last code length appears, and bitshifting over
+    1.
+
+    code = 0
+    1: 0
+      The next code with a length of 1 is 0 + the number of times a bit length of 0
+      appears (0) << 1.
+    code = 0
+    2: 00
+      0 + the number of times a code length of 1 appears (0) << 1.
+    code = 0
+    3: 010 = 2
+      (0 + 1) << 1
+    4: 1110 = 7
+      (2 + 5) << 1
+    5: 11110 = 8
+      (7 + 1) << 1
+
+    [0, 0, 00, 010, 1110, 11110]
+
+    Now we can generate the codes for each code length. To do this, iterate through the sorted
+    code length array from above, and if the length does not equal 0, assign the next code for
+    that code length and iterate the next code for the code length.
+    
+    [2, 5, 0, 5, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 3]
+
+    [00, 11110, 0, 11111, 010, 011, 100, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1110, 110]
+
+    Now we can insert these codes into a binary tree with their indexes being their values
+    and we'll get the following tree.
+
+    ┌── (1)
+    │   ├── (11)
+    │   │   ├── (111)
+    │   │   │   ├── (1111)
+    │   │   │   │   ├── (11111: 3)
+    │   │   │   │   └── (11110: 1)
+    │   │   │   └── (1110: 17)
+    │   │   └── (110: 18)
+    │   └── (10)
+    │       ├── (101: 7)
+    │       └── (100: 6)
+    └── (0)
+        ├── (01)
+        │   ├── (011: 5)
+        │   └── (010: 4)
+        └── (00: 0)
+
+    These values come from the following alphabet:
+
+    0 - 15: Represent code lengths of 0 - 15
+        16: Copy the previous code length 3 - 6 times.
+            The next 2 bits indicate repeat length
+                  (0 = 3, ... , 3 = 6)
+              Example:  Codes 8, 16 (+2 bits 11),
+                        16 (+2 bits 10) will expand to
+                        12 code lengths of 8 (1 + 6 + 5)
+        17: Repeat a code length of 0 for 3 - 10 times.
+            (3 bits of length)
+        18: Repeat a code length of 0 for 11 - 138 times
+            (7 bits of length)
+
+    The following process would be comically time consuming, so I'll only decode the first 
+    few LL code lengths.
+
+    1110 -> 17
+    111 -> 7
+    The next 3 + 7 codes (indices 0..=9) have a length of 0. 
+    
+    101 -> 7
+    The code length for literal value 10 (ASCII line feed) is 7.
+    
+    110 -> 18
+    0101000 -> 0001010 = 10
+    The next 10 + 11 codes (indices 11..=31) have a length of 0.
+
+    11111 -> 3
+    The code length for literal value 32 (ASCII space) is 3.
+    
+This process continues until HLIT + 257 and HDIST + 1 code lengths have been decoded.
+An important thing to note is that the repeat sequences caused by symbols 16..=18 can continue
+past the boundary between the LL code lengths and the Dist code lengths, so it's best to decode
+the full block, and then split the output to get the separate LL and Dist code length arrays.
+
+After decoding the code lengths for the literal/length and distance codes, the prefix code trees
+can be built, and the main bitstream can be decoded. The process for decoding the bitstream is 
+nearly identical to decoding block type 1, however, because there is a prefix code tree for the 
+distance codes, you must decode the distance code following a length symbol, rather than just taking
+the next 5 bits.
+
 ## Extra
 Fig 1. Unabridged fixed prefix code table.
 

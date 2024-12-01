@@ -1,6 +1,9 @@
 [package]
 name = "gzip"
-version = "0.1.0"
+version = "0.1.1"
+authors = ["Jude Peel <judepeel.dev@gmail.com>"]
+repository = "https://github.com/jude-peel/gzip/"
+readme = "README.md"
 edition = "2021"
 
 [dependencies]
