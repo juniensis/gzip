@@ -196,14 +196,11 @@ This is something that is somewhat easy to forget but will quickly ruin an imple
 ## 3. DEFLATE
 
 ### 3.1 Introduction
-In my PNG decoder/encoder repository "chameleon", I have already described DEFLATE in some detail, however,
-I want both of these repositories to contain all of the information needed to write the code yourself. So,
-a large portion of this section will be copied over. DEFLATE is a lossless file compression data format 
-described originally by the memo RFC 1951. The core concepts behind DEFLATE, was LZSS encoding, and 
-prefix codes. The concepts are somewhat incorrectly called "LZ77" and "Huffman codes" in RFC 1951.
-The algorithm referred to as LZ77 better matches the Lempel–Ziv–Storer–Szymanski algorithm which is a derivative 
-of LZ77 that performs checks to ensure the token generated is more space efficient than just outputting the literal
-value. Inversely likewise, what are referred to as Huffman Codes, are derived from bit lengths rather than 
+DEFLATE is a lossless file compression data format described originally by the memo RFC 1951. The core concepts 
+behind DEFLATE, is LZSS encoding, and  prefix codes. The concepts are somewhat incorrectly called "LZ77" and 
+"Huffman codes" in RFC 1951. The algorithm referred to as LZ77 better matches the Lempel–Ziv–Storer–Szymanski algorithm
+which is a derivative of LZ77 that performs checks to ensure the token generated is more space efficient than just 
+outputting the literal value. Inversely likewise, what are referred to as Huffman Codes, are derived from bit lengths rather than 
 a frequency based Huffman tree, making "prefix codes" the more correct terminology as utilized in the papers 
 RFC 1951 references. Beyond semantics, this is just useful to avoid my mistake of implementing frequency based 
 Huffman trees, before finding out they won't be particularly useful for decoding. Anyways, the DEFLATE data format 
