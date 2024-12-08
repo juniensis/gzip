@@ -7,3 +7,10 @@ readme = "README.md"
 edition = "2021"
 
 [dependencies]
+
+[dev-dependencies]
+criterion = "0.5.1"
+
+[[bench]]
+name = "benchmark"
+harness = false

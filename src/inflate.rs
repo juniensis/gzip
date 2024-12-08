@@ -133,9 +133,6 @@ impl DeflateData {
                 // If it is in the range from 257..285 it is a length code.
                 } else if let 257..=285 = value {
                     // Get the base and number of extra bits.
-                    // Unwrap is called because the only circumstance this
-                    // is a call to a HashMap made from a const table, so if
-                    // it returns None something else has gone horribly wrong.
                     let mut _length = LENGTH_BASE[value - 257];
                     let len_extra = LENGTH_EXTRA_BITS[value - 257];
                     // If length has extra bits, iterate through them, and add
