@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, fmt, fmt::Display};
+use std::{cell::RefCell, cmp::Ordering, fmt, fmt::Display, rc::Rc};
 
 /// Code lengths from section 3.2.6 of RFC 1951.
 pub const FIXED_CODE_LENGTHS: [u8; 288] = [
@@ -70,7 +70,7 @@ pub const DISTANCE_BASE: [u16; 30] = [
 /// // 0b0000_0000_0000_0000_0000_0000_0000_1011
 /// assert_eq!(new.code, from.code);
 /// '''
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub struct Code {
     pub buffer: u32,
     pub length: u8,
@@ -184,17 +184,17 @@ impl Display for Code {
 /// * 'code' - An instance of the Code struct which contains a u32 bit buffer
 ///         containing the code, and a length representing what quantity of bits
 ///         in the buffer are part of the code.
-/// * 'left' - An option holding a Box reference to the child node attached to
+/// * 'left' - An option holding a Rc<RefCell<>> reference to the child node attached to
 ///         the left.
-/// * 'right' - An option holding a Box reference to the child node attached to
+/// * 'right' - An option holding a Rc<RefCell<>> reference to the child node attached to
 ///         the right.
 #[derive(Debug, Clone)]
 pub struct Node {
     pub value: Option<usize>,
     pub significance: u64,
     pub code: Code,
-    pub left: Option<Box<Node>>,
-    pub right: Option<Box<Node>>,
+    pub left: Option<Rc<RefCell<Node>>>,
+    pub right: Option<Rc<RefCell<Node>>>,
 }
 
 impl Node {
@@ -257,8 +257,8 @@ impl Default for Node {
 /// * 'current' - The most recent node to be traversed.
 #[derive(Debug)]
 pub struct PrefixTree {
-    pub root: Node,
-    pub current: Box<Node>,
+    pub root: Rc<RefCell<Node>>,
+    pub current: Rc<RefCell<Node>>,
 }
 
 impl PrefixTree {
@@ -269,8 +269,8 @@ impl PrefixTree {
     /// A PrefixTree with default values.
     pub fn new() -> Self {
         Self {
-            root: Node::new(),
-            current: Box::new(Node::new()),
+            root: Rc::new(RefCell::new(Node::new())),
+            current: Rc::new(RefCell::new(Node::new())),
         }
     }
     /// Accepts a code as input and then creates the branches required to reach
@@ -301,34 +301,35 @@ impl PrefixTree {
     ///
     /// assert_eq!(value, 255);
     /// '''
-    /// TODO: Remove clones.
     pub fn insert_code(&mut self, code: Code, value: usize) {
-        let mut current = &mut self.root;
+        let mut current = Rc::clone(&self.root);
         let mut current_code = Code::new();
-        for bit in code.clone() {
+        for bit in code {
             match bit {
                 0 => {
-                    if current.left.is_none() {
-                        current.left = Some(Box::new(Node::new()));
+                    if current.borrow().left.is_none() {
+                        current.borrow_mut().left = Some(Rc::new(RefCell::new(Node::new())));
                     }
-                    current = current.left.as_mut().unwrap();
+                    let left = current.borrow().left.as_ref().unwrap().clone();
+                    current = left;
                     current_code.push_bit(bit);
-                    current.code = current_code.clone();
+                    current.borrow_mut().code = current_code;
                 }
                 1 => {
-                    if current.right.is_none() {
-                        current.right = Some(Box::new(Node::new()));
+                    if current.borrow().right.is_none() {
+                        current.borrow_mut().right = Some(Rc::new(RefCell::new(Node::new())));
                     }
-                    current = current.right.as_mut().unwrap();
+                    let left = current.borrow().right.as_ref().unwrap().clone();
+                    current = left;
                     current_code.push_bit(bit);
-                    current.code = current_code.clone();
+                    current.borrow_mut().code = current_code;
                 }
                 _ => {}
             }
         }
-        current.value = Some(value);
-        current.code = code;
-        self.current = Box::new(self.root.clone());
+        current.borrow_mut().value = Some(value);
+        current.borrow_mut().code = code;
+        self.current = self.root.clone();
     }
     /// Generates a prefix code tree from the given bit lengths.
     ///
@@ -417,17 +418,17 @@ impl PrefixTree {
     /// assert_eq!(tree.walk(1), None);
     /// assert_eq!(tree.walk(1), Some(255));
     /// '''
-    ///
-    /// TODO: Remove clones.
     pub fn walk(&mut self, direction: u8) -> Option<usize> {
         assert!(direction < 2);
 
         match direction {
             0 => {
-                if let Some(v) = self.current.left.clone() {
-                    self.current = v.clone();
-                    if let Some(value) = v.value {
-                        self.current = Box::new(self.root.clone());
+                let tmp = self.current.clone();
+                let tmp_borrow = tmp.borrow();
+                if let Some(left) = tmp_borrow.left.clone() {
+                    self.current = left.clone();
+                    if let Some(value) = self.current.clone().borrow().value {
+                        self.current = self.root.clone();
                         return Some(value);
                     } else {
                         return None;
@@ -435,10 +436,12 @@ impl PrefixTree {
                 }
             }
             1 => {
-                if let Some(v) = self.current.right.clone() {
-                    self.current = v.clone();
-                    if let Some(value) = v.value {
-                        self.current = Box::new(self.root.clone());
+                let tmp = self.current.clone();
+                let tmp_borrow = tmp.borrow();
+                if let Some(right) = tmp_borrow.right.clone() {
+                    self.current = right.clone();
+                    if let Some(value) = self.current.clone().borrow().value {
+                        self.current = self.root.clone();
                         return Some(value);
                     } else {
                         return None;
@@ -460,7 +463,7 @@ impl Default for PrefixTree {
 impl fmt::Display for PrefixTree {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fn format_node(
-            node: &Option<Box<Node>>,
+            node: &Option<Rc<RefCell<Node>>>,
             prefix: String,
             is_right: bool,
             f: &mut fmt::Formatter<'_>,
@@ -471,22 +474,22 @@ impl fmt::Display for PrefixTree {
                     "{}{}({}{})",
                     prefix,
                     if is_right { "├── " } else { "└── " },
-                    node.code,
-                    if let Some(value) = node.value {
+                    node.borrow().code,
+                    if let Some(value) = node.borrow().value {
                         format!(": {}", value)
                     } else {
                         String::new()
                     }
                 )?;
                 let new_prefix = format!("{}{}", prefix, if is_right { "│   " } else { "    " });
-                format_node(&node.right, new_prefix.clone(), true, f)?;
-                format_node(&node.left, new_prefix, false, f)?;
+                format_node(&node.borrow().right, new_prefix.clone(), true, f)?;
+                format_node(&node.borrow().left, new_prefix, false, f)?;
             }
             Ok(())
         }
 
-        writeln!(f, "{}", self.root)?;
-        format_node(&self.root.right, String::new(), true, f)?;
-        format_node(&self.root.left, String::new(), false, f)
+        writeln!(f, "{}", self.root.borrow())?;
+        format_node(&self.root.borrow().right, String::new(), true, f)?;
+        format_node(&self.root.borrow().left, String::new(), false, f)
     }
 }
