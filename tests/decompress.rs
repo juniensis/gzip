@@ -41,3 +41,14 @@ fn test_block_type_2() {
     assert_eq!(raw_1, decompressed_1);
     assert_eq!(raw_2, decompressed_2);
 }
+
+#[test]
+fn test_larger_file() {
+    let mut compressed = GzipFile::from_path("./tests/compressed/picture.png.gz").unwrap();
+
+    let raw = fs::read("./tests/raw/picture.png").unwrap();
+
+    let decompressed = compressed.decompress().unwrap();
+
+    assert_eq!(raw, decompressed);
+}
