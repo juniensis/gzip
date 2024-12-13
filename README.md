@@ -38,8 +38,8 @@
 | Block Type | Test Size | Time | Megabytes per Second |
 |------------|-----------|------|----------------------|
 | 0          | 47 Bytes  | 6.98 µs | 6.7335 Mb/S       |
-| 1          | 124 Bytes | 6.35 ms | 0.0195 Mb/S       |
-| 2          | 457 Bytes | 2.63 ms | 0.1739 Mb/S       |
+| 1          | 124 Bytes | 66.32 µs | 1.870 Mb/S       |
+| 2          | 457 Bytes | 46.85 ms | 9.7541 Mb/S       |
 
 ## 1. The GZIP Format
 
