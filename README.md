@@ -25,6 +25,8 @@
 ### Problems to Fix
 
 - [ ] Really slow.
+  - [ ] Remove as many instances of cloning as possible primarily within the
+          walk and insert_code functions.
 - [ ] Seems to break on not tiny files.
   - [x] Checked if it's because the LZSS lookup buffer spans all blocks.
     - [x] Switched decoding loop to looking back through all decoded

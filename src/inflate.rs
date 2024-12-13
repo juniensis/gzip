@@ -133,7 +133,7 @@ impl DeflateData {
                 // If it is in the range from 257..285 it is a length code.
                 } else if let 257..=285 = value {
                     // Get the base and number of extra bits.
-                    let mut _length = LENGTH_BASE[value - 257];
+                    let mut length = LENGTH_BASE[value - 257];
                     let len_extra = LENGTH_EXTRA_BITS[value - 257];
                     // If length has extra bits, iterate through them, and add
                     // the value to the base length.
@@ -145,18 +145,18 @@ impl DeflateData {
                             .fold(0u16, |acc, bit| (acc << 1) | bit as u16)
                             .reverse_bits()
                             >> (16 - len_extra);
-                        _length += additional_length;
+                        length += additional_length;
                     }
 
                     // After every length code is a 5 bit distance code.
-                    let mut _distance: usize = self
+                    let mut distance: usize = self
                         .bitstream
                         .by_ref()
                         .take(5)
                         .fold(0usize, |acc, bit| (acc << 1) | bit as usize);
 
-                    let dist_extra = DISTANCE_EXTRA_BITS[_distance];
-                    let dist_base = DISTANCE_BASE[_distance];
+                    let dist_extra = DISTANCE_EXTRA_BITS[distance];
+                    let dist_base = DISTANCE_BASE[distance];
 
                     if dist_extra > 0 {
                         let additional_distance = self
@@ -166,13 +166,13 @@ impl DeflateData {
                             .fold(0u16, |acc, bit| (acc << 1) | bit as u16)
                             .reverse_bits()
                             >> (16 - dist_extra);
-                        _distance = (dist_base + additional_distance) as usize;
+                        distance = (dist_base + additional_distance) as usize;
                     } else {
-                        _distance = dist_base as usize;
+                        distance = dist_base as usize;
                     }
 
-                    let start_idx = self.decompressed.len() - _distance;
-                    let end_idx = start_idx + _length as usize;
+                    let start_idx = self.decompressed.len() - distance;
+                    let end_idx = start_idx + length as usize;
 
                     for idx in start_idx..end_idx {
                         self.decompressed.push(self.decompressed[idx]);
@@ -226,39 +226,18 @@ impl DeflateData {
             .collect::<Vec<_>>();
 
         //
-        let mut cl_lengths = [0; 19];
         let mut cl_lengths_sorted = [0; 19];
+
+        const LENGTH_ORDER: [usize; 19] = [
+            16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15,
+        ];
 
         // Put code lengths into cl_lengths in the order:
         // 16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15
         for (i, len) in cl_len_vec.chunks(3).enumerate() {
             let value = len.iter().rev().fold(0u8, |acc, bit| (acc << 1) | *bit);
 
-            cl_lengths[i] = value;
-        }
-        for (i, len) in cl_lengths_sorted.iter_mut().enumerate() {
-            *len = match i {
-                16 => cl_lengths[0],
-                17 => cl_lengths[1],
-                18 => cl_lengths[2],
-                0 => cl_lengths[3],
-                8 => cl_lengths[4],
-                7 => cl_lengths[5],
-                9 => cl_lengths[6],
-                6 => cl_lengths[7],
-                10 => cl_lengths[8],
-                5 => cl_lengths[9],
-                11 => cl_lengths[10],
-                4 => cl_lengths[11],
-                12 => cl_lengths[12],
-                3 => cl_lengths[13],
-                13 => cl_lengths[14],
-                2 => cl_lengths[15],
-                14 => cl_lengths[16],
-                1 => cl_lengths[17],
-                15 => cl_lengths[18],
-                _ => 0,
-            }
+            cl_lengths_sorted[LENGTH_ORDER[i]] = value;
         }
 
         // Generate the code length prefix tree.
@@ -312,7 +291,7 @@ impl DeflateData {
                 if sym < 256 {
                     self.decompressed.push(sym as u8);
                 } else if let 257..285 = sym {
-                    let mut _length = LENGTH_BASE[sym - 257];
+                    let mut length = LENGTH_BASE[sym - 257];
                     let len_extra = LENGTH_EXTRA_BITS[sym - 257];
 
                     if len_extra > 0 {
@@ -323,22 +302,22 @@ impl DeflateData {
                             .fold(0u16, |acc, bit| (acc << 1) | bit as u16)
                             .reverse_bits()
                             >> (16 - len_extra);
-                        _length += additional_length;
+                        length += additional_length;
                     }
 
                     // Distance codes are encoded.
-                    let mut _distance: usize = 0;
+                    let mut distance: usize;
                     loop {
                         if let Some(bit) = self.bitstream.by_ref().next() {
                             if let Some(dist) = dist_tree.walk(bit) {
-                                _distance = dist;
+                                distance = dist;
                                 break;
                             }
                         }
                     }
 
-                    let dist_extra = DISTANCE_EXTRA_BITS[_distance];
-                    let dist_base = DISTANCE_BASE[_distance];
+                    let dist_extra = DISTANCE_EXTRA_BITS[distance];
+                    let dist_base = DISTANCE_BASE[distance];
 
                     if dist_extra > 0 {
                         let additional_distance = self
@@ -348,13 +327,13 @@ impl DeflateData {
                             .fold(0u16, |acc, bit| (acc << 1) | bit as u16)
                             .reverse_bits()
                             >> (16 - dist_extra);
-                        _distance = (dist_base + additional_distance) as usize;
+                        distance = (dist_base + additional_distance) as usize;
                     } else {
-                        _distance = dist_base as usize;
+                        distance = dist_base as usize;
                     }
 
-                    let start_idx = self.decompressed.len() - _distance;
-                    let end_idx = start_idx + _length as usize;
+                    let start_idx = self.decompressed.len() - distance;
+                    let end_idx = start_idx + length as usize;
 
                     for idx in start_idx..end_idx {
                         self.decompressed.push(self.decompressed[idx]);
@@ -365,12 +344,6 @@ impl DeflateData {
             }
         }
 
-        /*
-        output
-            .iter()
-            .map(|x| *x as u8)
-            .for_each(|byte| self.decompressed.push(byte));
-        */
         Ok(())
     }
 }

@@ -301,6 +301,7 @@ impl PrefixTree {
     ///
     /// assert_eq!(value, 255);
     /// '''
+    /// TODO: Remove clones.
     pub fn insert_code(&mut self, code: Code, value: usize) {
         let mut current = &mut self.root;
         let mut current_code = Code::new();
@@ -416,6 +417,8 @@ impl PrefixTree {
     /// assert_eq!(tree.walk(1), None);
     /// assert_eq!(tree.walk(1), Some(255));
     /// '''
+    ///
+    /// TODO: Remove clones.
     pub fn walk(&mut self, direction: u8) -> Option<usize> {
         assert!(direction < 2);
 
