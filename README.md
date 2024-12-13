@@ -28,7 +28,10 @@
   - [x] Remove as many instances of cloning as possible primarily within the
           walk and insert_code functions (switched from Box to Rc RefCell for
           way cheaper cloning).
-- [ ] Seems to break on not tiny files.
+        
+It worked but just was incredibly slow, it now can decode files up to 15Mb in a 
+reasonable time, but is still too slow for use on truly large files.
+- [x] Seems to break on not tiny files.
   - [x] Checked if it's because the LZSS lookup buffer spans all blocks.
     - [x] Switched decoding loop to looking back through all decoded
               data rather than just the current block.
