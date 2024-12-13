@@ -1,36 +1,57 @@
 # GZIP Decoder
 
 ## Goals
+
 ### Decode
+
 - [x] Parse header.
 
 - [x] DEFLATE
-    - [x] Read block header.
-    - [x] Process block type 0.
-    - [x] Process block type 1.
-        - [x] Generate fixed prefix code tree.
-        - [x] Bitstream to symbols.
-        - [x] Decode LZSS.
-    - [x] Process block type 2.
-        - [x] Generate code length prefix code tree.
-        - [x] Generate literal/length prefix code tree.
-        - [x] Generate distance prefix code tree.
-        - [x] Bitstream to symbols.
-        - [x] Decode LZSS
+  - [x] Read block header.
+  - [x] Process block type 0.
+  - [x] Process block type 1.
+    - [x] Generate fixed prefix code tree.
+    - [x] Bitstream to symbols.
+    - [x] Decode LZSS.
+  - [x] Process block type 2.
+    - [x] Generate code length prefix code tree.
+    - [x] Generate literal/length prefix code tree.
+    - [x] Generate distance prefix code tree.
+    - [x] Bitstream to symbols.
+    - [x] Decode LZSS
 
 - [x] Confirm CRC-32 checksum
+
+### Problems to Fix
+
+- [ ] Really slow.
+- [ ] Seems to break on not tiny files.
+  - [x] Checked if it's because the LZSS lookup buffer spans all blocks.
+    - [x] Switched decoding loop to looking back through all decoded
+              data rather than just the current block.
+    - [x] Still doesn't work.
+
+## Benchmarks :(
+
+| Block Type | Test Size | Time | Megabytes per Second |
+|------------|-----------|------|----------------------|
+| 0          | 47 Bytes  | 6.98 µs | 6.7335 Mb/S       |
+| 1          | 124 Bytes | 6.35 ms | 0.0195 Mb/S       |
+| 2          | 457 Bytes | 2.63 ms | 0.1739 Mb/S       |
 
 ## 1. The GZIP Format
 
 ### 1.1 Introduction
+
 The GZIP format is a lossless file compression data format used within the GZIP utility
 described in RFC 1952. GZIP files are made up by a series of members each made up of
-a header, a set of DEFLATE compressed blocks, with the end marked 
+a header, a set of DEFLATE compressed blocks, with the end marked
 by the DEFLATE blocks footer.
 
 ### 1.2 The Header
-The header has a core 10 byte set of data, followed by optional data. The format 
-is described in RFC 1952 section 2.3 as follows: 
+
+The header has a core 10 byte set of data, followed by optional data. The format
+is described in RFC 1952 section 2.3 as follows:
 
          +---+---+---+---+---+---+---+---+---+---+
          |ID1|ID2|CM |FLG|     MTIME     |XFL|OS | (more-->)
@@ -63,7 +84,7 @@ is described in RFC 1952 section 2.3 as follows:
 ID1 and ID2 are the bytes that mark the following data as a GZIP compressed file.
 They fixed as the bytes 0x1f and 0x8b. CM is the compression method, and is a single
 byte, values 0-7 are reserved, but the only value used is 8, or the byte 0x08. Then
-there is FLG which is broken down into individual bits with each bit meaning the 
+there is FLG which is broken down into individual bits with each bit meaning the
 following:
 
       bit 0   FTEXT
@@ -80,15 +101,17 @@ in the description of the header format above. MTIME is 4 bytes and is the modif
 time in UNIX format (seconds since 00:00:00 GMT, Jan. 1, 1970.) and is also optional.
 XFL represents whether the compression used is the most compressed, or fastest algorithm,
 represented by the bytes 0x02 and 0x04 respectively. Finally, OS is a single byte representing
-which operating system is used, values 0-13 are reserved and 255 is reserved for 
-unknown. The majority of these operating systems no longer exist. However the full list is on page 
-8 of the RFC. 
+which operating system is used, values 0-13 are reserved and 255 is reserved for
+unknown. The majority of these operating systems no longer exist. However the full list is on page
+8 of the RFC.
 
 ### 1.3 The Body
+
 The body of a GZIP file is made up of a number of DEFLATE compressed blocks, which will be explained
 in their own section.
 
 ### 1.4 The Trailer
+
 At the end of every GZIP member is a CRC32 check value, and a section describing the number of bytes in
 the original uncompressed data. This is referred to as the trailer, and takes the following format:
 
@@ -99,7 +122,7 @@ the original uncompressed data. This is referred to as the trailer, and takes th
 
 CRC32 is the check value of the original uncompressed data computed from the CRC-32 algorithm. It's
 implementation in this program will be described if/when it is implemented, however, in the mean time, the Wikipedia page
-on cyclic redundancy checks (https://en.wikipedia.org/wiki/Cyclic_redundancy_check) provides a good
+on cyclic redundancy checks (<https://en.wikipedia.org/wiki/Cyclic_redundancy_check>) provides a good
 example of encoding a 14 bit message with a 3 bit CRC with the polynomial x^3 + x + 1:
   
     Start with the message to be encoded: 
@@ -171,6 +194,7 @@ data. So for a length of 11 the last 4 bytes of a GZIP file would look like:
     0b0000_1011 0b0000_0000 0b0000_0000 0b0000_0000
 
 ## 2. Bits into Bytes
+
 Now for a brief detour. In both .gz data and the DEFLATE bitstream, bits are packed in to bytes as follows:
 
     1. The first bit is pushed as the least significant bit of the byte.
@@ -187,29 +211,32 @@ would look like:
 You might notice that 1101 equals 13, not 11, and this is because of rule #1.
 
 ### 2.1 Rule #1
+
 A devious yet consistent little scheme exists within both GZIP and DEFLATE: No matter what, any numerical
 value is pushed into the bitstream least significant bit to most significant bit. This does not apply to
-arbitrary bit sequences such as prefix codes or symbols, but does apply to values such as ISIZE, the CRC-32 
+arbitrary bit sequences such as prefix codes or symbols, but does apply to values such as ISIZE, the CRC-32
 check value, and once we get to DEFLATE, things like distance/length offsets, the LEN in block type 0, and more.
 This is something that is somewhat easy to forget but will quickly ruin an implementation.
 
 ## 3. DEFLATE
 
 ### 3.1 Introduction
-DEFLATE is a lossless file compression data format described originally by the memo RFC 1951. The core concepts 
-behind DEFLATE, is LZSS encoding, and  prefix codes. The concepts are somewhat incorrectly called "LZ77" and 
+
+DEFLATE is a lossless file compression data format described originally by the memo RFC 1951. The core concepts
+behind DEFLATE, is LZSS encoding, and  prefix codes. The concepts are somewhat incorrectly called "LZ77" and
 "Huffman codes" in RFC 1951. The algorithm referred to as LZ77 better matches the Lempel–Ziv–Storer–Szymanski algorithm
-which is a derivative of LZ77 that performs checks to ensure the token generated is more space efficient than just 
-outputting the literal value. Inversely likewise, what are referred to as Huffman Codes, are derived from bit lengths rather than 
-a frequency based Huffman tree, making "prefix codes" the more correct terminology as utilized in the papers 
-RFC 1951 references. Beyond semantics, this is just useful to avoid my mistake of implementing frequency based 
-Huffman trees, before finding out they won't be particularly useful for decoding. Anyways, the DEFLATE data format 
-is made up of an arbitrary number of blocks of various types containing a header, a compressed data stream (with bits 
-pushed into it as described in section 2), and an EOB marker except for block type 0. The header format changes 
-depending on the block type yet all headers begin with three bits defining whether the block is the last, and 
+which is a derivative of LZ77 that performs checks to ensure the token generated is more space efficient than just
+outputting the literal value. Inversely likewise, what are referred to as Huffman Codes, are derived from bit lengths rather than
+a frequency based Huffman tree, making "prefix codes" the more correct terminology as utilized in the papers
+RFC 1951 references. Beyond semantics, this is just useful to avoid my mistake of implementing frequency based
+Huffman trees, before finding out they won't be particularly useful for decoding. Anyways, the DEFLATE data format
+is made up of an arbitrary number of blocks of various types containing a header, a compressed data stream (with bits
+pushed into it as described in section 2), and an EOB marker except for block type 0. The header format changes
+depending on the block type yet all headers begin with three bits defining whether the block is the last, and
 what type the block is.
 
 ### 3.2 Block Types
+
 The 3 bit header contains two variables: BFINAL and BTYPE. BFINAL is represented by the first bit, and BTYPE
 is represented by the following two. So, all block types will at least have the following elements in common:
 
@@ -225,11 +252,12 @@ rule #1.
     11 - Reserved (error).
 
 Because of rule #1 when looking at the bytes for a compressed block the bits will appear as is, however,
-they will be flipped when looking at the bitstream. 
+they will be flipped when looking at the bitstream.
 
 ### 3.2.1 Block Type 0
-Data in block type 0 is uncompressed and byte-aligned, so after the 3 bit header there will be 5 bits of 
-padding, followed by 2 values LEN and NLEN both of which take up two bytes. LEN is the total length of 
+
+Data in block type 0 is uncompressed and byte-aligned, so after the 3 bit header there will be 5 bits of
+padding, followed by 2 values LEN and NLEN both of which take up two bytes. LEN is the total length of
 uncompressed data present and NLEN is the bitwise complement to LEN. The presence of NLEN at best is only
 useful for double checking that the block is valid, otherwise it can realistically be ignored and maintain
 compliance. After NLEN the bitstream begins, and is not terminated by an EOB marker, rather LEN is used to
@@ -273,11 +301,12 @@ Here is an example of decoding a DEFLATE block of type 0:
 The final bytes in the data are the ASCII characters "ABC".
 
 ### 3.2.2 Block Type 1
+
 Block type 1 is the first to implement the core ideas of DEFLATE. First an EOB marker (256) is added
-to the end of the input data. Then the input data is tokenized by the LZSS algorithm into symbols 
+to the end of the input data. Then the input data is tokenized by the LZSS algorithm into symbols
 representing lengths and distances specified by a length and distance code table given in section
 3.2.5 of RFC 1951. Next these symbols are encoded using a fixed prefix code table from section 3.2.6
-of RFC 1951. The decompression process is the inverse of this process, section 3.2.3 of the RFC, 
+of RFC 1951. The decompression process is the inverse of this process, section 3.2.3 of the RFC,
 provides the following pseudocode:
 
       loop (until end of block code recognized)
@@ -353,7 +382,6 @@ Finally, the distance code table:
       8   3  17-24   18   8    513-768   28   13 16385-24576
       9   3  25-32   19   8   769-1024   29   13 24577-32768
 
-
 Reference table for all of the fixed codes is at the end of this file (Fig 1.) The process is as follows:
 
   1.Read bitstream starting after the header from left to right.
@@ -380,23 +408,24 @@ The final output seems to be a text file with the text "AABBBBCCCCCCCC" with a n
 This case only uses low length and distance codes, so the extra bits on each aren't used. After
 a length code, there might be a number of extra bits given in the table, after reading the length
 symbol, then read the amount of extra bits given, and the number is the offset. So, to represent
-the length 12, the symbol 265 is used and has 1 extra bit. If that bit is 0 it will be 11, if it 
-is 1 it will be 12. So after encoding with the fixed prefix code table the bitstream would look 
+the length 12, the symbol 265 is used and has 1 extra bit. If that bit is 0 it will be 11, if it
+is 1 it will be 12. So after encoding with the fixed prefix code table the bitstream would look
 like: 00010011. After a length symbol there is always a distance, which is represented by a symbol
-from 0-29 with extra bits defined by the table. So to represent a length of 12 and a distance of 8 
-the bitstream would look like: 00010011001101001 with 0001001 1 being the length code with the extra 
+from 0-29 with extra bits defined by the table. So to represent a length of 12 and a distance of 8
+the bitstream would look like: 00010011001101001 with 0001001 1 being the length code with the extra
 bit, and 00110100 1 being the distance code with the extra bit.
 
 ### 3.2.3 Block Type 2
-Block type 2 behaves quite similarly to block type 1, however, with the enormous difference of 
+
+Block type 2 behaves quite similarly to block type 1, however, with the enormous difference of
 encoding the prefix code lengths within the header. The process of encoding block type 2 consists
 of taking the input data, adding an EOB marker, and applying LZSS to generate literals and length/
-distance pairs. Then, based on the data generate prefix codes for the lengths/literals and the 
-distances, before taking the code lengths of these prefix codes, and creating prefix codes for the 
+distance pairs. Then, based on the data generate prefix codes for the lengths/literals and the
+distances, before taking the code lengths of these prefix codes, and creating prefix codes for the
 lengths of the prefix codes (confusing right?). The code lengths are then encoded into the header,
 and finally the input data can be encoded into the bitstream using the literal/length and distance
 prefix codes. This all is very confusing, so let's just start with outlining what a block of type
-2 looks like. 
+2 looks like.
 
           BFINAL  BTYPE  HLIT  HDIST  HCLEN    CL Lengths    LL Lengths     Dist Lengths
     BITS: 1       2      5     5      4       (HCLEN + 4)*3  HLIT + 257     HDIST + 1
@@ -404,11 +433,11 @@ prefix codes. This all is very confusing, so let's just start with outlining wha
           DATA ... EOB
 
 So, after the 3 bit header all blocks share, there is HLIT, which represents how many code lengths
-are present for literals and lengths. Every block needs to specify either a code or the absence of a 
+are present for literals and lengths. Every block needs to specify either a code or the absence of a
 code for every byte, and a code for EOB, so HLIT contains the number of total literals/lengths - 257.
 HDIST contains the number of distance codes - 1. HCLEN describes the number of code length codes - 4,
 the code lengths are encoded as 3 bit integers directly after HCLEN, in the field CL Lengths. Then,
-with the code lengths in CL Lengths, a prefix code tree is built and used to parse the LL and Dist 
+with the code lengths in CL Lengths, a prefix code tree is built and used to parse the LL and Dist
 lengths. Lets decode a block by hand, this will take some time.
 
     1010001010110011100000111001000011000011000011000011000010100000000010
@@ -441,10 +470,10 @@ lengths. Lets decode a block by hand, this will take some time.
     000  100  011  010  000  011  000  011  000  011  000  011  000  101  000  000  000  101
     0    4    3    2    0    3    0    3    0    3    0    3    0    5    0    0    0    5
 
-Now we get to one of the most devious parts of block type 2. Without specifying why, the RFC 
-just states that the order these code lengths appear in is as follows: 16, 17, 18, 0, 8, 7, 9, 
+Now we get to one of the most devious parts of block type 2. Without specifying why, the RFC
+just states that the order these code lengths appear in is as follows: 16, 17, 18, 0, 8, 7, 9,
 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15.
-    
+
     16:  17:  18:  0:   8:   7:   9:   6:   10:  5:   11:  4:   12:  3:   13:  2:   14:  1:
     000  100  011  010  000  011  000  011  000  011  000  011  000  101  000  000  000  101
     0    4    3    2    0    3    0    3    0    3    0    3    0    5    0    0    0    5
@@ -546,12 +575,13 @@ past the boundary between the LL code lengths and the Dist code lengths, so it's
 the full block, and then split the output to get the separate LL and Dist code length arrays.
 
 After decoding the code lengths for the literal/length and distance codes, the prefix code trees
-can be built, and the main bitstream can be decoded. The process for decoding the bitstream is 
-nearly identical to decoding block type 1, however, because there is a prefix code tree for the 
+can be built, and the main bitstream can be decoded. The process for decoding the bitstream is
+nearly identical to decoding block type 1, however, because there is a prefix code tree for the
 distance codes, you must decode the distance code following a length symbol, rather than just taking
 the next 5 bits.
 
 ## Extra
+
 Fig 1. Unabridged fixed prefix code table.
 
     +---------------------------------------------------------------------------+

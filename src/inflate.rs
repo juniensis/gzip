@@ -120,7 +120,7 @@ impl DeflateData {
     fn block_type_1(&mut self) -> Result<(), DeflateError> {
         let mut prefix_tree = PrefixTree::from_lengths(&FIXED_CODE_LENGTHS);
 
-        let mut output = Vec::new();
+        //let mut output = Vec::new();
 
         // Iterate through the bitstream.
         while let Some(bit) = self.bitstream.by_ref().next() {
@@ -129,7 +129,7 @@ impl DeflateData {
                 // If the value less than 256, it is a literal and should be
                 // pushed unaltered to the output stream.
                 if value < 256 {
-                    output.push(value);
+                    self.decompressed.push(value as u8);
                 // If it is in the range from 257..285 it is a length code.
                 } else if let 257..=285 = value {
                     // Get the base and number of extra bits.
@@ -171,21 +171,23 @@ impl DeflateData {
                         _distance = dist_base as usize;
                     }
 
-                    let start_idx = output.len() - _distance;
+                    let start_idx = self.decompressed.len() - _distance;
                     let end_idx = start_idx + _length as usize;
 
                     for idx in start_idx..end_idx {
-                        output.push(output[idx]);
+                        self.decompressed.push(self.decompressed[idx]);
                     }
                 } else if value == 256 {
                     break;
                 }
             }
         }
+        /*
         output
             .iter()
             .map(|x| *x as u8)
             .for_each(|byte| self.decompressed.push(byte));
+        */
         Ok(())
     }
     fn block_type_2(&mut self) -> Result<(), DeflateError> {
@@ -301,13 +303,14 @@ impl DeflateData {
         let mut ll_tree = PrefixTree::from_lengths(&code_lengths[0..(hlit as usize + 257)]);
         let mut dist_tree = PrefixTree::from_lengths(&code_lengths[(hlit as usize + 257)..]);
 
-        let mut output: Vec<usize> = Vec::new();
+        // Testing pushing data straight to the decompressed stream.
+        //let mut output: Vec<usize> = Vec::new();
 
         // Nearly identical logic to block type 1.
         while let Some(bit) = self.bitstream.by_ref().next() {
             if let Some(sym) = ll_tree.walk(bit) {
                 if sym < 256 {
-                    output.push(sym);
+                    self.decompressed.push(sym as u8);
                 } else if let 257..285 = sym {
                     let mut _length = LENGTH_BASE[sym - 257];
                     let len_extra = LENGTH_EXTRA_BITS[sym - 257];
@@ -350,11 +353,11 @@ impl DeflateData {
                         _distance = dist_base as usize;
                     }
 
-                    let start_idx = output.len() - _distance;
+                    let start_idx = self.decompressed.len() - _distance;
                     let end_idx = start_idx + _length as usize;
 
                     for idx in start_idx..end_idx {
-                        output.push(output[idx]);
+                        self.decompressed.push(self.decompressed[idx]);
                     }
                 } else if sym == 256 {
                     break;
@@ -362,10 +365,12 @@ impl DeflateData {
             }
         }
 
+        /*
         output
             .iter()
             .map(|x| *x as u8)
             .for_each(|byte| self.decompressed.push(byte));
+        */
         Ok(())
     }
 }
