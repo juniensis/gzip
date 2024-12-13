@@ -33,13 +33,13 @@
               data rather than just the current block.
     - [x] Still doesn't work.
 
-## Benchmarks
+## Benchmarks :(
 
 | Block Type | Test Size | Time | Megabytes per Second |
 |------------|-----------|------|----------------------|
 | 0          | 47 Bytes  | 6.98 µs | 6.7335 Mb/S       |
 | 1          | 124 Bytes | 66.32 µs | 1.870 Mb/S       |
-| 2          | 457 Bytes | 46.85 ms | 9.7541 Mb/S       |
+| 2          | 457 Bytes | 46.85 µs | 9.7541 Mb/S       |
 
 ## 1. The GZIP Format
 
