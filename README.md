@@ -37,7 +37,7 @@ reasonable time, but is still too slow for use on truly large files.
               data rather than just the current block.
     - [x] Still doesn't work.
 
-## Benchmarks :(
+## Benchmarks
 
 | Block Type | Test Size | Time | Megabytes per Second |
 |------------|-----------|------|----------------------|
