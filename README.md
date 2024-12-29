@@ -22,28 +22,13 @@
 
 - [x] Confirm CRC-32 checksum
 
-### Problems to Fix
-
-- [x] Really slow.
-  - [x] Remove as many instances of cloning as possible primarily within the
-          walk and insert_code functions (switched from Box to Rc RefCell for
-          way cheaper cloning).
-        
-It worked but just was incredibly slow, it now can decode files up to 15Mb in a 
-reasonable time, but is still too slow for use on truly large files.
-- [x] Seems to break on not tiny files.
-  - [x] Checked if it's because the LZSS lookup buffer spans all blocks.
-    - [x] Switched decoding loop to looking back through all decoded
-              data rather than just the current block.
-    - [x] Still doesn't work.
-
 ## Benchmarks
 
 | Block Type | Test Size | Time | Megabytes per Second |
 |------------|-----------|------|----------------------|
 | 0          | 47 Bytes  | 6.98 µs | 6.7335 Mb/S       |
 | 1          | 124 Bytes | 66.32 µs | 1.870 Mb/S       |
-| 2          | 457 Bytes | 46.85 µs | 9.7541 Mb/S       |
+| 2          | 457 Bytes | 46.85 µs | 9.7541 Mb/S      |
 
 ## 1. The GZIP Format
 
