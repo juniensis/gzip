@@ -1,8 +1,8 @@
 [package]
 name = "gzip"
 version = "0.1.1"
-authors = ["Jude Peel <judepeel.dev@gmail.com>"]
-repository = "https://github.com/jude-peel/gzip/"
+authors = ["June <juniensis@gmail.com>"]
+repository = "https://github.com/juniensis/gzip/"
 readme = "README.md"
 edition = "2021"
 
